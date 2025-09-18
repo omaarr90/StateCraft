@@ -1,7 +1,11 @@
 name: CI
+# Temporarily disabled until GitHub Actions supports GraalVM 25.
 on:
-  push: { branches: [ main ] }
-  pull_request:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Manual trigger while waiting for GraalVM 25 support"
+        required: false
 jobs:
   build:
     strategy: { matrix: { os: [ubuntu-latest, macos-latest, windows-latest] } }

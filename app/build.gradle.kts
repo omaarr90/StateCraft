@@ -8,7 +8,7 @@
 plugins {
     // Apply the application plugin to add support for building a CLI application in Java.
     application
-    id("org.graalvm.buildtools.native") version "0.11.0"
+    alias(libs.plugins.graalvm.native)
 }
 
 repositories {
@@ -22,15 +22,16 @@ dependencies {
     // Use JUnit Jupiter for testing.
     testImplementation(libs.junit.jupiter)
 
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testRuntimeOnly(libs.junit.platform.launcher)
 
     // This dependency is used by the application.
     implementation(libs.guava)
+    implementation(libs.picocli)
 }
 
 application {
     // Define the main class for the application.
-    mainClass = "com.omaarr90.statecraft.Main"
+    mainClass = "com.omaarr90.statecraft.StatecraftCli"
 }
 
 tasks.named<Test>("test") {
