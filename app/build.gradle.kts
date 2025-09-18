@@ -8,6 +8,7 @@
 plugins {
     // Apply the application plugin to add support for building a CLI application in Java.
     application
+    id("org.graalvm.buildtools.native") version "0.11.0"
 }
 
 repositories {
@@ -16,6 +17,8 @@ repositories {
 }
 
 dependencies {
+    implementation(project(":core"))
+
     // Use JUnit Jupiter for testing.
     testImplementation(libs.junit.jupiter)
 
@@ -33,4 +36,13 @@ application {
 tasks.named<Test>("test") {
     // Use JUnit Platform for unit tests.
     useJUnitPlatform()
+}
+
+graalvmNative {
+    binaries {
+        named("main") {
+            imageName.set("statecraft")
+            resources.autodetect()
+        }
+    }
 }
