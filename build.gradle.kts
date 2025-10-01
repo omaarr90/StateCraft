@@ -1,4 +1,6 @@
-plugins { /* per-module */ }
+plugins {
+    alias(libs.plugins.spotless)
+}
 
 allprojects {
     repositories { mavenCentral() }
