@@ -5,7 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-public record QuantumCircuit(int qubitCount, List<GateApplication> operations) {
+public record QuantumCircuit(int qubitCount, List<QuantumCircuit.Operation> operations) {
 
     private static final ComplexNumber ZERO = ComplexNumber.zero();
 
@@ -18,15 +18,26 @@ public record QuantumCircuit(int qubitCount, List<GateApplication> operations) {
             throw new IllegalArgumentException("qubitCount must be positive");
         }
         operations = List.copyOf(Objects.requireNonNull(operations, "operations"));
-        for (GateApplication operation : operations) {
-            validateTarget(qubitCount, operation.qubit());
+        for (Operation operation : operations) {
+            Objects.requireNonNull(operation, "operation");
+            operation.validateTargets(qubitCount);
         }
     }
 
     public QuantumCircuit append(SingleQubitGate gate, int targetQubit) {
-        GateApplication application = new GateApplication(Objects.requireNonNull(gate, "gate"), targetQubit);
-        validateTarget(qubitCount, application.qubit());
-        List<GateApplication> next = new ArrayList<>(operations);
+        Operation.SingleGateOperation application =
+                new Operation.SingleGateOperation(Objects.requireNonNull(gate, "gate"), targetQubit);
+        application.validateTargets(qubitCount);
+        List<Operation> next = new ArrayList<>(operations);
+        next.add(application);
+        return new QuantumCircuit(qubitCount, next);
+    }
+
+    public QuantumCircuit append(CnotGate gate, int controlQubit, int targetQubit) {
+        Operation.CnotOperation application = new Operation.CnotOperation(
+                Objects.requireNonNull(gate, "gate"), controlQubit, targetQubit);
+        application.validateTargets(qubitCount);
+        List<Operation> next = new ArrayList<>(operations);
         next.add(application);
         return new QuantumCircuit(qubitCount, next);
     }
@@ -45,19 +56,30 @@ public record QuantumCircuit(int qubitCount, List<GateApplication> operations) {
         Objects.requireNonNull(initialState, "initialState");
         int dimension = 1 << qubitCount;
         if (initialState.length != dimension) {
-            throw new IllegalArgumentException("Expected state vector of length " + dimension + ", got " + initialState.length);
+            throw new IllegalArgumentException(
+                    "Expected state vector of length " + dimension + ", got " + initialState.length);
         }
         ComplexNumber[] state = new ComplexNumber[dimension];
         for (int i = 0; i < dimension; i++) {
             state[i] = initialState[i] == null ? ZERO : initialState[i];
         }
-        for (GateApplication operation : operations) {
-            applyGate(state, operation);
+        for (Operation operation : operations) {
+            applyOperation(state, operation);
         }
         return state;
     }
 
-    private void applyGate(ComplexNumber[] state, GateApplication operation) {
+    private void applyOperation(ComplexNumber[] state, Operation operation) {
+        if (operation instanceof Operation.SingleGateOperation single) {
+            applySingleGate(state, single);
+        } else if (operation instanceof Operation.CnotOperation cnot) {
+            applyCnot(state, cnot);
+        } else {
+            throw new IllegalStateException("Unsupported operation type: " + operation.getClass().getName());
+        }
+    }
+
+    private void applySingleGate(ComplexNumber[] state, Operation.SingleGateOperation operation) {
         int target = operation.qubit();
         SingleQubitGate gate = operation.gate();
         ComplexNumber g00 = gate.element(0, 0);
@@ -80,22 +102,76 @@ public record QuantumCircuit(int qubitCount, List<GateApplication> operations) {
         }
     }
 
-    private void requireValidTarget(int qubit) {
-        validateTarget(qubitCount, qubit);
-    }
+    private void applyCnot(ComplexNumber[] state, Operation.CnotOperation operation) {
+        int control = operation.controlQubit();
+        int target = operation.targetQubit();
+        int controlMask = 1 << control;
+        int targetMask = 1 << target;
+        int pairMask = controlMask | targetMask;
+        for (int base = 0; base < state.length; base++) {
+            if ((base & pairMask) == 0) {
+                int idx00 = base;
+                int idx01 = base | targetMask;
+                int idx10 = base | controlMask;
+                int idx11 = base | pairMask;
 
-    private static void validateTarget(int qubitCount, int qubit) {
-        if (qubit < 0 || qubit >= qubitCount) {
-            throw new IllegalArgumentException("target qubit out of range: " + qubit);
+                ComplexNumber amp00 = state[idx00] == null ? ZERO : state[idx00];
+                ComplexNumber amp01 = state[idx01] == null ? ZERO : state[idx01];
+                ComplexNumber amp10 = state[idx10] == null ? ZERO : state[idx10];
+                ComplexNumber amp11 = state[idx11] == null ? ZERO : state[idx11];
+
+                state[idx00] = amp00;
+                state[idx01] = amp01;
+                state[idx10] = amp11;
+                state[idx11] = amp10;
+            }
         }
     }
 
-    public record GateApplication(SingleQubitGate gate, int qubit) {
+    public sealed interface Operation permits Operation.SingleGateOperation, Operation.CnotOperation {
 
-        public GateApplication {
-            Objects.requireNonNull(gate, "gate");
-            if (qubit < 0) {
-                throw new IllegalArgumentException("qubit index must be non-negative");
+        void validateTargets(int qubitCount);
+
+        record SingleGateOperation(SingleQubitGate gate, int qubit) implements Operation {
+
+            public SingleGateOperation {
+                Objects.requireNonNull(gate, "gate");
+                if (qubit < 0) {
+                    throw new IllegalArgumentException("qubit index must be non-negative");
+                }
+            }
+
+            @Override
+            public void validateTargets(int qubitCount) {
+                if (qubit >= qubitCount) {
+                    throw new IllegalArgumentException("target qubit out of range: " + qubit);
+                }
+            }
+        }
+
+        record CnotOperation(CnotGate gate, int controlQubit, int targetQubit) implements Operation {
+
+            public CnotOperation {
+                Objects.requireNonNull(gate, "gate");
+                if (controlQubit < 0) {
+                    throw new IllegalArgumentException("control qubit index must be non-negative");
+                }
+                if (targetQubit < 0) {
+                    throw new IllegalArgumentException("target qubit index must be non-negative");
+                }
+                if (controlQubit == targetQubit) {
+                    throw new IllegalArgumentException("control and target qubits must differ");
+                }
+            }
+
+            @Override
+            public void validateTargets(int qubitCount) {
+                if (controlQubit >= qubitCount) {
+                    throw new IllegalArgumentException("control qubit out of range: " + controlQubit);
+                }
+                if (targetQubit >= qubitCount) {
+                    throw new IllegalArgumentException("target qubit out of range: " + targetQubit);
+                }
             }
         }
     }

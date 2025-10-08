@@ -1,6 +1,7 @@
 package com.omaarr90.statecraft.quantum;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.omaarr90.statecraft.core.math.ComplexNumber;
 import org.junit.jupiter.api.Test;
@@ -48,6 +49,40 @@ class QuantumCircuitTest {
         ComplexNumber[] result = circuit.apply(initial);
         assertComplexEquals(ComplexNumber.zero(), result[0]);
         assertComplexEquals(new ComplexNumber(-1.0, 0.0), result[1]);
+    }
+
+    @Test
+    void cnotFlipsTargetWhenControlIsOne() {
+        QuantumCircuit circuit = new QuantumCircuit(2)
+                .append(new PauliX(), 1)
+                .append(CnotGate.of(), 1, 0);
+        ComplexNumber[] result = circuit.apply();
+        ComplexNumber zero = ComplexNumber.zero();
+        ComplexNumber one = ComplexNumber.one();
+        assertComplexEquals(zero, result[0]);
+        assertComplexEquals(zero, result[1]);
+        assertComplexEquals(zero, result[2]);
+        assertComplexEquals(one, result[3]);
+    }
+
+    @Test
+    void cnotLeavesTargetWhenControlIsZero() {
+        QuantumCircuit circuit = new QuantumCircuit(2)
+                .append(new PauliX(), 0)
+                .append(CnotGate.of(), 1, 0);
+        ComplexNumber[] result = circuit.apply();
+        ComplexNumber zero = ComplexNumber.zero();
+        ComplexNumber one = ComplexNumber.one();
+        assertComplexEquals(zero, result[0]);
+        assertComplexEquals(one, result[1]);
+        assertComplexEquals(zero, result[2]);
+        assertComplexEquals(zero, result[3]);
+    }
+
+    @Test
+    void cnotRejectsSameControlAndTarget() {
+        QuantumCircuit circuit = new QuantumCircuit(2);
+        assertThrows(IllegalArgumentException.class, () -> circuit.append(CnotGate.of(), 0, 0));
     }
 
     private void assertComplexEquals(ComplexNumber expected, ComplexNumber actual) {
