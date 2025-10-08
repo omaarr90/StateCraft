@@ -12,13 +12,13 @@ public class ComplexArraysTinyOpsTest {
 
     @Test
     void complexMath_mul_scalarCases() {
-        ComplexMath.C c1 = ComplexMath.mul(1, 1, 1, -1); // (1+i)*(1-i) = 2+0i
-        assertEquals(2.0, c1.re(), EPS);
-        assertEquals(0.0, c1.im(), EPS);
+        ComplexNumber c1 = new ComplexNumber(1.0, 1.0).times(new ComplexNumber(1.0, -1.0)); // (1+i)*(1-i) = 2+0i
+        assertEquals(2.0, c1.real(), EPS);
+        assertEquals(0.0, c1.imag(), EPS);
 
-        ComplexMath.C c2 = ComplexMath.mul(2, 3, 4, 5); // (2+3i)*(4+5i) = -7 + 22i
-        assertEquals(-7.0, c2.re(), EPS);
-        assertEquals(22.0, c2.im(), EPS);
+        ComplexNumber c2 = new ComplexNumber(2.0, 3.0).times(new ComplexNumber(4.0, 5.0)); // (2+3i)*(4+5i) = -7 + 22i
+        assertEquals(-7.0, c2.real(), EPS);
+        assertEquals(22.0, c2.imag(), EPS);
     }
 
     @Test
