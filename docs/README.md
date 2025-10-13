@@ -32,7 +32,7 @@ This document captures the current implementation status of the StateCraft quant
 ## Engine Abstraction
 
 - `SimulatorEngine` interface defines the contract (`id()` plus `simulate`) that concrete simulation back-ends implement and expose via `ServiceLoader`.
-- `StatevectorEngine` (in `engines` module) evolves circuits using the existing `QuantumCircuit` math, returns results as `StateVector`, and registers itself under the `statevector` identifier.
+- `StatevectorEngine` (in `engines` module) implements SIMD-accelerated statevector kernels via the JDK Vector API, returns results as `StateVector`, and registers itself under the `statevector` identifier. Running tests or the CLI with this engine requires `--enable-preview --add-modules jdk.incubator.vector`.
 
 ## Command-Line Interface
 
@@ -54,8 +54,8 @@ This document captures the current implementation status of the StateCraft quant
 
 ## Current Gaps and Next Steps
 
-- No simulator engines implemented yet; CLI reports none discovered.
-- Circuit model handles single-qubit gates only; multi-qubit gates and noise channels remain future work.
+- Statevector engine currently covers single-qubit gates and CNOT; additional multi-qubit primitives, noise, and alternative back-ends are still pending.
+- Circuit ingest (OpenQASM/JSON), benchmarking harnesses, and noise modeling remain future work.
 - Additional documentation will be needed as engines and parsers are introduced.
 
 ## How to Reproduce the Current State
