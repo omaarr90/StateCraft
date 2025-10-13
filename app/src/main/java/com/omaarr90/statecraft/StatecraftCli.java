@@ -1,35 +1,35 @@
 package com.omaarr90.statecraft;
 
+import com.omaarr90.statecraft.core.engine.SimulationRequest;
+import com.omaarr90.statecraft.core.engine.SimulationResult;
 import com.omaarr90.statecraft.core.engine.SimulatorEngine;
-import com.omaarr90.statecraft.core.math.ComplexNumber;
 import com.omaarr90.statecraft.quantum.CnotGate;
 import com.omaarr90.statecraft.quantum.Hadamard;
 import com.omaarr90.statecraft.quantum.QuantumCircuit;
-import picocli.CommandLine;
-import picocli.CommandLine.Command;
-import picocli.CommandLine.Model.CommandSpec;
-import picocli.CommandLine.Spec;
-
+import com.omaarr90.statecraft.quantum.StateVector;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Locale;
 import java.util.ServiceLoader;
 import java.util.concurrent.Callable;
+import picocli.CommandLine;
+import picocli.CommandLine.Command;
+import picocli.CommandLine.Model.CommandSpec;
+import picocli.CommandLine.Spec;
 
 @Command(
         name = "statecraft",
         description = "Run Statecraft commands.",
         mixinStandardHelpOptions = true,
         version = StatecraftCli.VERSION,
-        subcommands = { StatecraftCli.Engines.class, StatecraftCli.Demo.class }
-)
+        subcommands = { StatecraftCli.Engines.class, StatecraftCli.Demo.class })
 public final class StatecraftCli implements Callable<Integer> {
     static final String VERSION = "Statecraft CLI 0.1";
 
     @Spec
     private CommandSpec spec;
 
-    void main(String[] args) {
+    public static void main(String[] args) {
         int exitCode = new CommandLine(new StatecraftCli()).execute(args);
         System.exit(exitCode);
     }
@@ -55,9 +55,9 @@ public final class StatecraftCli implements Callable<Integer> {
             engines.sort(Comparator.naturalOrder());
 
             var out = spec.commandLine().getOut();
-            out.println(VERSION + " – engines discovered:");
+            out.println(VERSION + " - " + engines.size() + " engines discovered:");
             if (engines.isEmpty()) {
-                out.println("  (none yet — add an engine in Phase 3)");
+                out.println("  (none yet - add an engine in Phase 3)");
             } else {
                 for (var id : engines) {
                     out.println("  - " + id);
@@ -78,34 +78,45 @@ public final class StatecraftCli implements Callable<Integer> {
             QuantumCircuit circuit = new QuantumCircuit(2)
                     .append(new Hadamard(), 0)
                     .append(CnotGate.of(), 0, 1);
-            ComplexNumber[] result = circuit.apply();
+            StateVector result = simulate(circuit);
             var out = spec.commandLine().getOut();
             out.println("Bell-state demo (qubit order q1 q0):");
-            for (int index = 0; index < result.length; index++) {
-                ComplexNumber amp = result[index];
-                if (isZero(amp)) {
+            int dimension = result.dimension();
+            for (int index = 0; index < dimension; index++) {
+                double real = result.real(index);
+                double imag = result.imag(index);
+                if (isZero(real, imag)) {
                     continue;
                 }
                 String bits = toBitString(index, circuit.qubitCount());
-                out.println("  |" + bits + "> : " + formatAmplitude(amp));
+                out.println("  |" + bits + "> : " + formatAmplitude(real, imag));
             }
             out.flush();
             return CommandLine.ExitCode.OK;
         }
 
+        private StateVector simulate(QuantumCircuit circuit) {
+            SimulatorEngine engine = ServiceLoader.load(SimulatorEngine.class).stream()
+                    .map(ServiceLoader.Provider::get)
+                    .filter(it -> StatevectorEngineIdHolder.ID.equals(it.id()))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalStateException(
+                            "No simulator engine with id '" + StatevectorEngineIdHolder.ID + "' found"));
+            SimulationResult result = engine.simulate(SimulationRequest.zeroState(circuit));
+            return result.finalState();
+        }
+
         private static String toBitString(int index, int qubitCount) {
             StringBuilder sb = new StringBuilder(qubitCount);
             for (int qubit = qubitCount - 1; qubit >= 0; qubit--) {
-                sb.append(((index >> qubit) & 1));
+                sb.append((index >> qubit) & 1);
             }
             return sb.toString();
         }
 
-        private static String formatAmplitude(ComplexNumber amplitude) {
+        private static String formatAmplitude(double real, double imag) {
             final double eps = 1e-9;
             final double invSqrt2 = 1.0 / Math.sqrt(2.0);
-            double real = amplitude.real();
-            double imag = amplitude.imag();
             boolean realZero = Math.abs(real) < eps;
             boolean imagZero = Math.abs(imag) < eps;
 
@@ -149,9 +160,16 @@ public final class StatecraftCli implements Callable<Integer> {
                     real, imag >= 0.0 ? "+" : "-", Math.abs(imag));
         }
 
-        private static boolean isZero(ComplexNumber amplitude) {
+        private static boolean isZero(double real, double imag) {
             final double eps = 1e-9;
-            return Math.abs(amplitude.real()) < eps && Math.abs(amplitude.imag()) < eps;
+            return Math.abs(real) < eps && Math.abs(imag) < eps;
+        }
+
+        private static final class StatevectorEngineIdHolder {
+            private static final String ID = "statevector";
+
+            private StatevectorEngineIdHolder() {
+            }
         }
     }
 }
