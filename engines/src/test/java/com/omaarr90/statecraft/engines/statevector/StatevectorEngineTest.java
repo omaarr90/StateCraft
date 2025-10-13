@@ -10,6 +10,7 @@ import com.omaarr90.statecraft.quantum.CnotGate;
 import com.omaarr90.statecraft.quantum.Hadamard;
 import com.omaarr90.statecraft.quantum.QuantumCircuit;
 import com.omaarr90.statecraft.quantum.StateVector;
+import com.omaarr90.statecraft.quantum.PauliX;
 import org.junit.jupiter.api.Test;
 
 class StatevectorEngineTest {
@@ -49,6 +50,23 @@ class StatevectorEngineTest {
         ComplexNumber[] expected = circuit.apply(new ComplexNumber[] {
                 ComplexNumber.zero(), ComplexNumber.one()
         });
+        assertStateMatches(expected, result.finalState());
+    }
+
+    @Test
+    void simulateMultiQubitCircuitMatchesReference() {
+        int qubits = 5;
+        QuantumCircuit circuit = new QuantumCircuit(qubits)
+                .append(new Hadamard(), 4)
+                .append(new Hadamard(), 1)
+                .append(new PauliX(), 0)
+                .append(CnotGate.of(), 4, 2)
+                .append(new Hadamard(), 2);
+
+        StatevectorEngine engine = new StatevectorEngine();
+        SimulationResult result = engine.simulate(SimulationRequest.zeroState(circuit));
+
+        ComplexNumber[] expected = circuit.apply();
         assertStateMatches(expected, result.finalState());
     }
 
