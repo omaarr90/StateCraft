@@ -31,13 +31,13 @@ This document captures the current implementation status of the StateCraft quant
 
 ## Engine Abstraction
 
-- `SimulatorEngine` interface defines the contract (`id()`) that concrete simulation back-ends will implement and register via `ServiceLoader` in later phases.
-- `engines` module is included in the Gradle build and depends on `core`, ready to host implementations.
+- `SimulatorEngine` interface defines the contract (`id()` plus `simulate`) that concrete simulation back-ends implement and expose via `ServiceLoader`.
+- `StatevectorEngine` (in `engines` module) evolves circuits using the existing `QuantumCircuit` math, returns results as `StateVector`, and registers itself under the `statevector` identifier.
 
 ## Command-Line Interface
 
 - `StatecraftCli` uses Picocli to expose a `statecraft` command with an `engines` subcommand.
-- The current CLI discovers `SimulatorEngine` implementations via `ServiceLoader`, prints any registered IDs, and communicates that engines are pending when none are found.
+- The CLI demo subcommand now resolves the `statevector` engine, runs the Bell-state circuit through it, and pretty-prints the non-zero amplitudes.
 - Build script enables GraalVM native image generation (`org.graalvm.buildtools.native` plugin) with autodetected resources.
 
 ## Build, Tooling, and Quality Gates
