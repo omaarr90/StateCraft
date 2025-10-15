@@ -60,6 +60,7 @@
 
 * The state vector is a contiguous array of length $2^n$ complex numbers ⇒ **$2^{n+1}$** doubles total.
 * Recommend 16-byte alignment minimum; prefer 32-/64-byte for AVX/AVX-512 when allocating large arrays.
+* SIMD kernels (`StatevectorKernels`) operate directly on this AoS layout; gather/scatter shuffles stay localized so higher layers no longer allocate planar scratch buffers.
 * CLI/JSON should clearly state that printed bitstrings are MSB-left to avoid confusion when comparing with indices.
 
 ## Validation

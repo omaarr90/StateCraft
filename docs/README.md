@@ -32,12 +32,15 @@ This document captures the current implementation status of the StateCraft quant
 ## Engine Abstraction
 
 - `SimulatorEngine` interface defines the contract (`id()` plus `simulate`) that concrete simulation back-ends implement and expose via `ServiceLoader`.
-- `StatevectorEngine` (in `engines` module) implements SIMD-accelerated statevector kernels via the JDK Vector API, returns results as `StateVector`, and registers itself under the `statevector` identifier. Running tests or the CLI with this engine requires `--enable-preview --add-modules jdk.incubator.vector`.
+- `StatevectorEngine` (in `engines` module) now drives SIMD-accelerated kernels directly over the canonical AoS `[re, im]` buffer, eliminating the legacy real/imag split staging arrays. The refactor tightened `StatevectorKernels` signatures around a single `double[]` and added vector-friendly shuffle helpers so gather/scatter stays localized.
+- A manual microbenchmark (`StatevectorKernelMicrobenchmark` under `engines/src/test/java`) contrasts the AoS kernels with a split-buffer reference to track throughput deltas. Run it with `java --enable-preview --add-modules jdk.incubator.vector -cp engines/build/classes/java/main:engines/build/classes/java/test com.omaarr90.statecraft.engines.statevector.StatevectorKernelMicrobenchmark`.
+- Running tests or the CLI with this engine still requires `--enable-preview --add-modules jdk.incubator.vector`.
 
 ## Command-Line Interface
 
 - `StatecraftCli` uses Picocli to expose a `statecraft` command with an `engines` subcommand.
 - The CLI demo subcommand now resolves the `statevector` engine, runs the Bell-state circuit through it, and pretty-prints the non-zero amplitudes.
+- Shot sampling flags (`--shots`, `--seed`, `--samples`) request histograms or raw outcomes alongside amplitudes, making it easy to experiment with shot-based workflows.
 - Build script enables GraalVM native image generation (`org.graalvm.buildtools.native` plugin) with autodetected resources.
 
 ## Build, Tooling, and Quality Gates
@@ -50,6 +53,7 @@ This document captures the current implementation status of the StateCraft quant
 ## Documentation and Planning Assets
 
 - Architecture Decision Record `docs/core/statevector-layout.md` documents chosen statevector bit order, complex precision, and AoS layout.
+- Measurement semantics for shot sampling and CLI integration are described in `docs/core/statevector-measurements.md`.
 - Project proposal (`docs/deliverables/project-proposal.md` and PDF variant) outlines long-term roadmap, milestones, and engine strategy.
 
 ## Current Gaps and Next Steps
