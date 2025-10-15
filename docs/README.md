@@ -31,13 +31,13 @@ This document captures the current implementation status of the StateCraft quant
 
 ## Engine Abstraction
 
-- `SimulatorEngine` interface defines the contract (`id()`) that concrete simulation back-ends will implement and register via `ServiceLoader` in later phases.
-- `engines` module is included in the Gradle build and depends on `core`, ready to host implementations.
+- `SimulatorEngine` interface defines the contract (`id()` plus `simulate`) that concrete simulation back-ends implement and expose via `ServiceLoader`.
+- `StatevectorEngine` (in `engines` module) implements SIMD-accelerated statevector kernels via the JDK Vector API, returns results as `StateVector`, and registers itself under the `statevector` identifier. Running tests or the CLI with this engine requires `--enable-preview --add-modules jdk.incubator.vector`.
 
 ## Command-Line Interface
 
 - `StatecraftCli` uses Picocli to expose a `statecraft` command with an `engines` subcommand.
-- The current CLI discovers `SimulatorEngine` implementations via `ServiceLoader`, prints any registered IDs, and communicates that engines are pending when none are found.
+- The CLI demo subcommand now resolves the `statevector` engine, runs the Bell-state circuit through it, and pretty-prints the non-zero amplitudes.
 - Build script enables GraalVM native image generation (`org.graalvm.buildtools.native` plugin) with autodetected resources.
 
 ## Build, Tooling, and Quality Gates
@@ -54,8 +54,8 @@ This document captures the current implementation status of the StateCraft quant
 
 ## Current Gaps and Next Steps
 
-- No simulator engines implemented yet; CLI reports none discovered.
-- Circuit model handles single-qubit gates only; multi-qubit gates and noise channels remain future work.
+- Statevector engine currently covers single-qubit gates and CNOT; additional multi-qubit primitives, noise, and alternative back-ends are still pending.
+- Circuit ingest (OpenQASM/JSON), benchmarking harnesses, and noise modeling remain future work.
 - Additional documentation will be needed as engines and parsers are introduced.
 
 ## How to Reproduce the Current State
