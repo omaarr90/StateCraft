@@ -40,6 +40,7 @@ This document captures the current implementation status of the StateCraft quant
 
 - `StatecraftCli` uses Picocli to expose a `statecraft` command with an `engines` subcommand.
 - The CLI demo subcommand now resolves the `statevector` engine, runs the Bell-state circuit through it, and pretty-prints the non-zero amplitudes.
+- A hard-coded `suite` subcommand executes a mini algorithm catalog (Bell pair, GHZ, 3-qubit QFT) and prints both amplitude breakdowns and deterministic measurement histograms.
 - Shot sampling flags (`--shots`, `--seed`, `--samples`) request histograms or raw outcomes alongside amplitudes, making it easy to experiment with shot-based workflows.
 - Build script enables GraalVM native image generation (`org.graalvm.buildtools.native` plugin) with autodetected resources.
 
