@@ -5,6 +5,8 @@
  * For more details on building Java & JVM projects, please refer to https://docs.gradle.org/9.0.0/userguide/building_java_projects.html in the Gradle documentation.
  */
 
+import org.gradle.api.tasks.compile.JavaCompile
+
 plugins {
     // Apply the application plugin to add support for building a CLI application in Java.
     application
@@ -18,6 +20,7 @@ repositories {
 
 dependencies {
     implementation(project(":core"))
+    implementation(project(":engines"))
 
     // Use JUnit Jupiter for testing.
     testImplementation(libs.junit.jupiter)
@@ -32,11 +35,17 @@ dependencies {
 application {
     // Define the main class for the application.
     mainClass = "com.omaarr90.statecraft.StatecraftCli"
+    applicationDefaultJvmArgs = listOf("--enable-preview", "--add-modules", "jdk.incubator.vector")
 }
 
 tasks.named<Test>("test") {
     // Use JUnit Platform for unit tests.
     useJUnitPlatform()
+    jvmArgs("--enable-preview", "--add-modules", "jdk.incubator.vector")
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    options.compilerArgs.addAll(listOf("--enable-preview", "--add-modules", "jdk.incubator.vector"))
 }
 
 graalvmNative {

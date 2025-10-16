@@ -1,6 +1,7 @@
 package com.omaarr90.statecraft.core.engine;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -16,6 +17,8 @@ class SimulationRequestTest {
         SimulationRequest request = SimulationRequest.zeroState(circuit);
         assertEquals(circuit, request.circuit());
         assertTrue(request.initialState().isEmpty());
+        assertTrue(request.measurement().isEmpty());
+        assertTrue(request.returnFinalState());
     }
 
     @Test
@@ -24,6 +27,8 @@ class SimulationRequestTest {
         StateVector state = StateVector.zero(1);
         SimulationRequest request = SimulationRequest.withInitialState(circuit, state);
         assertEquals(state, request.initialState().orElseThrow());
+        assertTrue(request.measurement().isEmpty());
+        assertTrue(request.returnFinalState());
     }
 
     @Test
@@ -32,5 +37,22 @@ class SimulationRequestTest {
         StateVector state = StateVector.zero(2);
         assertThrows(IllegalArgumentException.class,
                 () -> SimulationRequest.withInitialState(circuit, state));
+    }
+
+    @Test
+    void withMeasurementCanDisableFinalState() {
+        QuantumCircuit circuit = new QuantumCircuit(1);
+        MeasurementInstruction instruction = MeasurementInstruction.countsAll(256);
+        SimulationRequest base = SimulationRequest.zeroState(circuit);
+        SimulationRequest request = base.withMeasurement(instruction, false);
+        assertTrue(request.measurement().isPresent());
+        assertFalse(request.returnFinalState());
+    }
+
+    @Test
+    void droppingFinalStateWithoutMeasurementFails() {
+        QuantumCircuit circuit = new QuantumCircuit(1);
+        SimulationRequest request = SimulationRequest.zeroState(circuit);
+        assertThrows(IllegalStateException.class, request::withoutFinalState);
     }
 }
