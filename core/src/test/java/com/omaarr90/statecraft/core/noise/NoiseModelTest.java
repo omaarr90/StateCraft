@@ -1,17 +1,17 @@
 package com.omaarr90.statecraft.core.noise;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.omaarr90.statecraft.quantum.CnotGate;
 import com.omaarr90.statecraft.quantum.QuantumCircuit;
 import com.omaarr90.statecraft.quantum.QuantumCircuit.Operation;
-import com.omaarr90.statecraft.quantum.gates.PauliX;
-import com.omaarr90.statecraft.quantum.gates.PauliY;
-import com.omaarr90.statecraft.quantum.gates.PauliZ;
+import com.omaarr90.statecraft.quantum.PauliX;
+import com.omaarr90.statecraft.quantum.PauliY;
+import com.omaarr90.statecraft.quantum.PauliZ;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -30,7 +30,7 @@ class NoiseModelTest {
     @Test
     void builderAddsGateNoise() {
         NoiseModel model = NoiseModel.builder()
-                .afterGate(PauliX.class, ErrorChannel.depolarizing(0.01, 0))
+                .afterGate(Operation.SingleGateOperation.class, ErrorChannel.depolarizing(0.01, 0))
                 .build();
 
         assertTrue(model.hasNoise());
@@ -69,7 +69,7 @@ class NoiseModelTest {
     @Test
     void builderCombinesMultipleNoiseSources() {
         NoiseModel model = NoiseModel.builder()
-                .afterGate(PauliX.class, ErrorChannel.depolarizing(0.01, 0))
+                .afterGate(Operation.SingleGateOperation.class, ErrorChannel.depolarizing(0.01, 0))
                 .onQubits(ErrorChannel.phaseDamping(0.03, 0), 0)
                 .afterAllGates(ErrorChannel.amplitudeDamping(0.02, 0))
                 .build();
@@ -93,7 +93,7 @@ class NoiseModelTest {
     @Test
     void builderRejectsNullChannel() {
         NoiseModel.Builder builder = NoiseModel.builder();
-        assertThrows(NullPointerException.class, () -> builder.afterGate(PauliX.class, null));
+        assertThrows(NullPointerException.class, () -> builder.afterGate(Operation.SingleGateOperation.class, null));
     }
 
     @Test
@@ -107,7 +107,7 @@ class NoiseModelTest {
     @Test
     void builderIsIndependentAfterBuild() {
         NoiseModel.Builder builder = NoiseModel.builder()
-                .afterGate(PauliX.class, ErrorChannel.depolarizing(0.01, 0));
+                .afterGate(Operation.SingleGateOperation.class, ErrorChannel.depolarizing(0.01, 0));
 
         NoiseModel model1 = builder.build();
 
@@ -124,7 +124,7 @@ class NoiseModelTest {
     @Test
     void legacyConstructorStillWorksFluently() {
         NoiseModel model = new NoiseModel()
-                .afterGate(PauliX.class, ErrorChannel.depolarizing(0.01, 0))
+                .afterGate(Operation.SingleGateOperation.class, ErrorChannel.depolarizing(0.01, 0))
                 .afterAllGates(ErrorChannel.phaseFlip(0.02, 0));
 
         assertTrue(model.hasNoise());
@@ -137,11 +137,11 @@ class NoiseModelTest {
     @Test
     void channelsAfterReturnsEmptyForUnaffectedOperation() {
         NoiseModel model = NoiseModel.builder()
-                .afterGate(PauliX.class, ErrorChannel.depolarizing(0.01, 0))
+                .afterGate(Operation.SingleGateOperation.class, ErrorChannel.depolarizing(0.01, 0))
                 .build();
 
-        // PauliY operation should not trigger PauliX noise
-        Operation op = new QuantumCircuit.Operation.SingleGateOperation(new PauliY(), 0);
+        // A different operation type should not trigger single-gate noise
+        Operation op = new QuantumCircuit.Operation.CnotOperation(CnotGate.of(), 0, 1);
         List<ErrorChannel> channels = model.channelsAfter(op);
         assertTrue(channels.isEmpty());
     }
@@ -149,21 +149,21 @@ class NoiseModelTest {
     @Test
     void channelsAfterHandlesMultipleGateTypes() {
         NoiseModel model = NoiseModel.builder()
-                .afterGate(PauliX.class, ErrorChannel.depolarizing(0.01, 0))
-                .afterGate(PauliY.class, ErrorChannel.phaseFlip(0.02, 0))
+                .afterGate(Operation.SingleGateOperation.class, ErrorChannel.depolarizing(0.01, 0))
+                .afterGate(Operation.CnotOperation.class, ErrorChannel.phaseFlip(0.02, 0))
                 .build();
 
-        Operation opX = new QuantumCircuit.Operation.SingleGateOperation(new PauliX(), 0);
-        assertEquals(1, model.channelsAfter(opX).size());
+        Operation opSingle = new QuantumCircuit.Operation.SingleGateOperation(new PauliX(), 0);
+        assertEquals(1, model.channelsAfter(opSingle).size());
 
-        Operation opY = new QuantumCircuit.Operation.SingleGateOperation(new PauliY(), 0);
-        assertEquals(1, model.channelsAfter(opY).size());
+        Operation opCnot = new QuantumCircuit.Operation.CnotOperation(CnotGate.of(), 0, 1);
+        assertEquals(1, model.channelsAfter(opCnot).size());
     }
 
     @Test
     void toStringShowsNoiseCount() {
         NoiseModel model = NoiseModel.builder()
-                .afterGate(PauliX.class, ErrorChannel.depolarizing(0.01, 0))
+                .afterGate(Operation.SingleGateOperation.class, ErrorChannel.depolarizing(0.01, 0))
                 .onQubits(ErrorChannel.phaseDamping(0.03, 0), 0, 1)
                 .afterAllGates(ErrorChannel.phaseFlip(0.02, 0))
                 .build();
