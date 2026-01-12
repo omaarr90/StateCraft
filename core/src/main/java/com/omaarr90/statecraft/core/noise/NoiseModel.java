@@ -22,8 +22,8 @@ import java.util.Set;
  * 
  * <pre>{@code
  * NoiseModel model = NoiseModel.builder()
- *         .afterGate(PauliX.class, ErrorChannel.depolarizing(0.01, 0))
- *         .afterGate(CnotGate.class, ErrorChannel.depolarizing(0.05, 0, 1))
+ *         .afterGate(Operation.SingleGateOperation.class, ErrorChannel.depolarizing(0.01, 0))
+ *         .afterGate(Operation.CnotOperation.class, ErrorChannel.depolarizing(0.05, 0))
  *         .afterAllGates(ErrorChannel.thermalRelaxation(50e-6, 30e-6, 100e-9, 0))
  *         .build();
  * }</pre>
@@ -33,7 +33,7 @@ import java.util.Set;
  * 
  * <pre>{@code
  * NoiseModel model = new NoiseModel()
- *         .afterGate(PauliX.class, ErrorChannel.depolarizing(0.01, 0))
+ *         .afterGate(Operation.SingleGateOperation.class, ErrorChannel.depolarizing(0.01, 0))
  *         .afterAllGates(ErrorChannel.thermalRelaxation(50e-6, 30e-6, 100e-9, 0));
  * }</pre>
  */

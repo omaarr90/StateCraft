@@ -1,19 +1,24 @@
 package com.omaarr90.statecraft.core.engine;
 
+import com.omaarr90.statecraft.core.noise.NoiseModel;
 import com.omaarr90.statecraft.quantum.QuantumCircuit;
 import com.omaarr90.statecraft.quantum.StateVector;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalLong;
 
 /**
  * Request payload for running a simulator engine against a quantum circuit.
- * Encapsulates the circuit and an optional initial state vector; if no state is provided,
- * the engine must assume the |0...0⟩ basis state.
+ * Encapsulates the circuit, optional initial state vector, optional measurement instruction,
+ * optional noise configuration, and whether to return the final state.
+ * If no state is provided, the engine must assume the |0...0⟩ basis state.
  */
 public record SimulationRequest(
         QuantumCircuit circuit,
         Optional<StateVector> initialState,
         Optional<MeasurementInstruction> measurement,
+        Optional<NoiseModel> noiseModel,
+        OptionalLong noiseSeed,
         boolean returnFinalState) {
 
     public SimulationRequest {
@@ -42,6 +47,9 @@ public record SimulationRequest(
                 }
             });
         });
+        noiseModel = noiseModel == null ? Optional.empty() : noiseModel;
+        noiseModel.ifPresent(model -> Objects.requireNonNull(model, "noiseModel"));
+        noiseSeed = noiseSeed == null ? OptionalLong.empty() : noiseSeed;
         if (!returnFinalState && measurement.isEmpty()) {
             throw new IllegalArgumentException(
                     "simulation must request the final state or provide a measurement instruction");
@@ -49,22 +57,26 @@ public record SimulationRequest(
     }
 
     public static SimulationRequest zeroState(QuantumCircuit circuit) {
-        return new SimulationRequest(circuit, Optional.empty(), Optional.empty(), true);
+        return new SimulationRequest(circuit, Optional.empty(), Optional.empty(),
+                Optional.empty(), OptionalLong.empty(), true);
     }
 
     public static SimulationRequest withInitialState(QuantumCircuit circuit, StateVector state) {
         Objects.requireNonNull(state, "state");
-        return new SimulationRequest(circuit, Optional.of(state), Optional.empty(), true);
+        return new SimulationRequest(circuit, Optional.of(state), Optional.empty(),
+                Optional.empty(), OptionalLong.empty(), true);
     }
 
     public SimulationRequest withMeasurement(MeasurementInstruction instruction) {
         Objects.requireNonNull(instruction, "instruction");
-        return new SimulationRequest(circuit, initialState, Optional.of(instruction), returnFinalState);
+        return new SimulationRequest(circuit, initialState, Optional.of(instruction),
+                noiseModel, noiseSeed, returnFinalState);
     }
 
     public SimulationRequest withMeasurement(MeasurementInstruction instruction, boolean includeFinalState) {
         Objects.requireNonNull(instruction, "instruction");
-        return new SimulationRequest(circuit, initialState, Optional.of(instruction), includeFinalState);
+        return new SimulationRequest(circuit, initialState, Optional.of(instruction),
+                noiseModel, noiseSeed, includeFinalState);
     }
 
     public SimulationRequest withoutFinalState() {
@@ -74,6 +86,18 @@ public record SimulationRequest(
         if (!returnFinalState) {
             return this;
         }
-        return new SimulationRequest(circuit, initialState, measurement, false);
+        return new SimulationRequest(circuit, initialState, measurement,
+                noiseModel, noiseSeed, false);
+    }
+
+    public SimulationRequest withNoiseModel(NoiseModel model) {
+        Objects.requireNonNull(model, "model");
+        return new SimulationRequest(circuit, initialState, measurement,
+                Optional.of(model), noiseSeed, returnFinalState);
+    }
+
+    public SimulationRequest withNoiseSeed(long seed) {
+        return new SimulationRequest(circuit, initialState, measurement,
+                noiseModel, OptionalLong.of(seed), returnFinalState);
     }
 }

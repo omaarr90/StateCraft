@@ -29,6 +29,13 @@ This document captures the current implementation status of the StateCraft quant
 - `StateVector` record encapsulating immutable amplitude snapshots backed by interleaved double arrays; exposes indexed accessors and cloning safeguards.
 - Tests verify gate matrices, circuit evolution on 1- and 2-qubit examples, and phase behavior (`SingleQubitGateTest`, `QuantumCircuitTest`).
 
+### Circuit Parsing
+
+- `core.parse` defines a pluggable `CircuitParser` API plus `CircuitParseException` with optional line/column metadata.
+- JSON parser supports a compact schema with `qubits` and `operations`, covering `h`, `x`, `y`, `z`, `cx`, `swap`, `cp`, and `measure` (measurements must appear after unitary gates).
+- OpenQASM 3 subset parser supports `OPENQASM 3.0;`, `qubit[n] q;`, optional `bit[n] c;`, and the same gate/measurement set with `pi`-based angles.
+- Format detection prefers an explicit format, falls back to file extension, and finally checks for an `OPENQASM` prefix.
+
 ## Engine Abstraction
 
 - `SimulatorEngine` interface defines the contract (`id()` plus `simulate`) that concrete simulation back-ends implement and expose via `ServiceLoader`.
@@ -36,10 +43,33 @@ This document captures the current implementation status of the StateCraft quant
 - A manual microbenchmark (`StatevectorKernelMicrobenchmark` under `engines/src/test/java`) contrasts the AoS kernels with a split-buffer reference to track throughput deltas. Run it with `java --enable-preview --add-modules jdk.incubator.vector -cp engines/build/classes/java/main:engines/build/classes/java/test com.omaarr90.statecraft.engines.statevector.StatevectorKernelMicrobenchmark`.
 - Running tests or the CLI with this engine still requires `--enable-preview --add-modules jdk.incubator.vector`.
 
+## Noise-Aware Statevector Simulation
+
+- `SimulationRequest` optionally carries a `NoiseModel` plus a noise RNG seed for reproducible Kraus sampling.
+- `StatevectorEngine` applies noise channels after each unitary gate; measurement operations remain a terminal suffix.
+- Built-in single-qubit channels (depolarizing, amplitude damping, phase flip/damping, thermal relaxation) are supported; composite channels apply sequentially.
+- Limitations: multi-qubit Kraus operators are not supported, idle-time noise is not modeled, and the CLI does not yet expose noise configuration. Kraus operator selection uses the probabilities defined in the channel decomposition (state-independent). One noise trajectory is sampled per simulation; shot sampling draws from that final state.
+
+### How to run noisy simulations (Java API)
+
+```java
+NoiseModel model = NoiseModel.builder()
+        .afterAllGates(ErrorChannel.amplitudeDamping(0.05, 0))
+        .afterAllGates(ErrorChannel.phaseFlip(0.02, 0))
+        .build();
+
+SimulationRequest request = SimulationRequest.zeroState(circuit)
+        .withNoiseModel(model)
+        .withNoiseSeed(1234L); // optional
+
+SimulationResult result = engine.simulate(request);
+```
+
 ## Command-Line Interface
 
 - `StatecraftCli` uses Picocli to expose a `statecraft` command with an `engines` subcommand.
 - The CLI demo subcommand now resolves the `statevector` engine, runs the Bell-state circuit through it, and pretty-prints the non-zero amplitudes.
+- `statecraft run` loads a circuit file (`--input`) with `--format qasm|json|auto`, runs it on the requested engine, and prints amplitudes plus optional shot measurements.
 - A hard-coded `suite` subcommand executes a mini algorithm catalog (Bell pair, GHZ, 3-qubit QFT) and prints both amplitude breakdowns and deterministic measurement histograms.
 - Shot sampling flags (`--shots`, `--seed`, `--samples`) request histograms or raw outcomes alongside amplitudes, making it easy to experiment with shot-based workflows.
 - Build script enables GraalVM native image generation (`org.graalvm.buildtools.native` plugin) with autodetected resources.
@@ -59,8 +89,8 @@ This document captures the current implementation status of the StateCraft quant
 
 ## Current Gaps and Next Steps
 
-- Statevector engine currently covers single-qubit gates and CNOT; additional multi-qubit primitives, noise, and alternative back-ends are still pending.
-- Circuit ingest (OpenQASM/JSON), benchmarking harnesses, and noise modeling remain future work.
+- Statevector engine covers single- and two-qubit primitives plus multi-control gates; alternative back-ends are still pending.
+- OpenQASM support is deliberately limited to a small subset; expand grammar coverage and gate support as formats mature.
 - Additional documentation will be needed as engines and parsers are introduced.
 
 ## How to Reproduce the Current State

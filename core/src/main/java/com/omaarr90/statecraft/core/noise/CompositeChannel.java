@@ -16,7 +16,7 @@ import java.util.Set;
  * Current limitation: All channels must act on the same set of qubits,
  * or this implementation will union the affected qubits.
  */
-final class CompositeChannel implements ErrorChannel {
+public final class CompositeChannel implements ErrorChannel {
 
     private final ErrorChannel[] channels;
     private final int[] affectedQubits;

@@ -5,7 +5,13 @@ import com.omaarr90.statecraft.core.engine.MeasurementResult;
 import com.omaarr90.statecraft.core.engine.SimulationRequest;
 import com.omaarr90.statecraft.core.engine.SimulationResult;
 import com.omaarr90.statecraft.core.engine.SimulatorEngine;
+import com.omaarr90.statecraft.core.math.ComplexArrays;
 import com.omaarr90.statecraft.core.math.ComplexNumber;
+import com.omaarr90.statecraft.core.noise.CompositeChannel;
+import com.omaarr90.statecraft.core.noise.ErrorChannel;
+import com.omaarr90.statecraft.core.noise.KrausDecomposition;
+import com.omaarr90.statecraft.core.noise.KrausOperator;
+import com.omaarr90.statecraft.core.noise.NoiseModel;
 import com.omaarr90.statecraft.quantum.QuantumCircuit;
 import com.omaarr90.statecraft.quantum.StateVector;
 import com.omaarr90.statecraft.quantum.SingleQubitGate;
@@ -42,6 +48,14 @@ public final class StatevectorEngine implements SimulatorEngine {
                 initial -> populateFromState(initial, state),
                 () -> resetZeroState(state));
 
+        NoiseModel noiseModel = request.noiseModel().orElse(null);
+        boolean applyNoise = noiseModel != null && noiseModel.hasNoise();
+        SplittableRandom noiseRng = applyNoise
+                ? (request.noiseSeed().isPresent()
+                        ? new SplittableRandom(request.noiseSeed().getAsLong())
+                        : new SplittableRandom())
+                : null;
+
         List<QuantumCircuit.Operation.MeasureOperation> measureOperations = new ArrayList<>();
         boolean measurementSeen = false;
 
@@ -52,36 +66,54 @@ public final class StatevectorEngine implements SimulatorEngine {
                             "Unitary operations cannot follow measurement operations in the circuit");
                 }
                 applySingle(state, single);
+                if (applyNoise) {
+                    applyNoiseAfterOperation(state, operation, noiseModel, noiseRng, qubitCount);
+                }
             } else if (operation instanceof QuantumCircuit.Operation.CnotOperation cnot) {
                 if (measurementSeen) {
                     throw new UnsupportedOperationException(
                             "Unitary operations cannot follow measurement operations in the circuit");
                 }
                 StatevectorKernels.applyCnot(state, cnot.controlQubit(), cnot.targetQubit());
+                if (applyNoise) {
+                    applyNoiseAfterOperation(state, operation, noiseModel, noiseRng, qubitCount);
+                }
             } else if (operation instanceof QuantumCircuit.Operation.TwoQubitGateOperation twoQubit) {
                 if (measurementSeen) {
                     throw new UnsupportedOperationException(
                             "Unitary operations cannot follow measurement operations in the circuit");
                 }
                 applyTwoQubitGate(state, twoQubit);
+                if (applyNoise) {
+                    applyNoiseAfterOperation(state, operation, noiseModel, noiseRng, qubitCount);
+                }
             } else if (operation instanceof QuantumCircuit.Operation.TwoQubitDiagonalOperation diagonal) {
                 if (measurementSeen) {
                     throw new UnsupportedOperationException(
                             "Unitary operations cannot follow measurement operations in the circuit");
                 }
                 applyTwoQubitDiagonal(state, diagonal);
+                if (applyNoise) {
+                    applyNoiseAfterOperation(state, operation, noiseModel, noiseRng, qubitCount);
+                }
             } else if (operation instanceof QuantumCircuit.Operation.SwapOperation swap) {
                 if (measurementSeen) {
                     throw new UnsupportedOperationException(
                             "Unitary operations cannot follow measurement operations in the circuit");
                 }
                 StatevectorKernels.applySwap(state, swap.firstQubit(), swap.secondQubit());
+                if (applyNoise) {
+                    applyNoiseAfterOperation(state, operation, noiseModel, noiseRng, qubitCount);
+                }
             } else if (operation instanceof QuantumCircuit.Operation.MultiControlOperation multi) {
                 if (measurementSeen) {
                     throw new UnsupportedOperationException(
                             "Unitary operations cannot follow measurement operations in the circuit");
                 }
                 applyMultiControl(state, multi);
+                if (applyNoise) {
+                    applyNoiseAfterOperation(state, operation, noiseModel, noiseRng, qubitCount);
+                }
             } else if (operation instanceof QuantumCircuit.Operation.MeasureOperation measure) {
                 measurementSeen = true;
                 measureOperations.add(measure);
@@ -292,5 +324,73 @@ public final class StatevectorEngine implements SimulatorEngine {
 
     private static StateVector toStateVector(int qubitCount, double[] state) {
         return StateVector.fromArray(qubitCount, state);
+    }
+
+    private void applyNoiseAfterOperation(double[] state, QuantumCircuit.Operation operation,
+            NoiseModel noiseModel, SplittableRandom rng, int qubitCount) {
+        List<ErrorChannel> channels = noiseModel.channelsAfter(operation);
+        if (channels.isEmpty()) {
+            return;
+        }
+        for (ErrorChannel channel : channels) {
+            applyErrorChannel(state, channel, rng, qubitCount);
+        }
+    }
+
+    private void applyErrorChannel(double[] state, ErrorChannel channel,
+            SplittableRandom rng, int qubitCount) {
+        if (channel instanceof CompositeChannel composite) {
+            for (ErrorChannel component : composite.getChannels()) {
+                applyErrorChannel(state, component, rng, qubitCount);
+            }
+            return;
+        }
+        int[] qubits = channel.affectedQubits();
+        if (qubits.length != 1) {
+            throw new UnsupportedOperationException(
+                    "Only single-qubit noise channels are supported, got " + qubits.length);
+        }
+        int target = qubits[0];
+        if (target < 0 || target >= qubitCount) {
+            throw new IllegalArgumentException("noise channel qubit out of range: " + target);
+        }
+        KrausDecomposition decomposition = channel.krausDecomposition();
+        if (decomposition.numQubits() != 1) {
+            throw new UnsupportedOperationException(
+                    "Only single-qubit Kraus operators are supported, got " + decomposition.numQubits());
+        }
+        int operatorIndex = decomposition.sampleOperator(rng);
+        KrausOperator operator = decomposition.operators().get(operatorIndex);
+        applySingleQubitKraus(state, target, operator);
+    }
+
+    private void applySingleQubitKraus(double[] state, int target, KrausOperator operator) {
+        if (operator.numQubits() != 1) {
+            throw new UnsupportedOperationException(
+                    "Only single-qubit Kraus operators are supported, got " + operator.numQubits());
+        }
+        ComplexNumber[] matrix = operator.matrix();
+        ComplexNumber m00 = matrix[0];
+        ComplexNumber m01 = matrix[1];
+        ComplexNumber m10 = matrix[2];
+        ComplexNumber m11 = matrix[3];
+        StatevectorKernels.applySingleGate(state, target,
+                m00.real(), m00.imag(),
+                m01.real(), m01.imag(),
+                m10.real(), m10.imag(),
+                m11.real(), m11.imag());
+        renormalizeState(state);
+    }
+
+    private static void renormalizeState(double[] state) {
+        double normSq = ComplexArrays.norm2Sq(state);
+        if (!Double.isFinite(normSq) || normSq == 0.0) {
+            throw new IllegalStateException(
+                    "state collapsed to invalid norm after noise application");
+        }
+        if (Math.abs(normSq - 1.0) > 1e-12) {
+            double scale = 1.0 / Math.sqrt(normSq);
+            ComplexArrays.scal(state, 0, state.length >> 1, scale, 0.0);
+        }
     }
 }

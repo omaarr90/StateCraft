@@ -5,6 +5,9 @@ import com.omaarr90.statecraft.core.engine.MeasurementResult;
 import com.omaarr90.statecraft.core.engine.SimulationRequest;
 import com.omaarr90.statecraft.core.engine.SimulationResult;
 import com.omaarr90.statecraft.core.engine.SimulatorEngine;
+import com.omaarr90.statecraft.core.parse.CircuitFormat;
+import com.omaarr90.statecraft.core.parse.CircuitParseException;
+import com.omaarr90.statecraft.core.parse.CircuitParsers;
 import com.omaarr90.statecraft.quantum.CnotGate;
 import com.omaarr90.statecraft.quantum.Hadamard;
 import com.omaarr90.statecraft.quantum.QuantumCircuit;
@@ -16,6 +19,7 @@ import java.util.Locale;
 import java.util.List;
 import java.util.ServiceLoader;
 import java.util.concurrent.Callable;
+import java.nio.file.Path;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Model.CommandSpec;
@@ -27,7 +31,7 @@ import picocli.CommandLine.Spec;
         description = "Run Statecraft commands.",
         mixinStandardHelpOptions = true,
         version = StatecraftCli.VERSION,
-        subcommands = { StatecraftCli.Engines.class, StatecraftCli.Demo.class, StatecraftCli.Suite.class })
+        subcommands = { StatecraftCli.Engines.class, StatecraftCli.Demo.class, StatecraftCli.Run.class, StatecraftCli.Suite.class })
 public final class StatecraftCli implements Callable<Integer> {
     static final String VERSION = "Statecraft CLI 0.1";
 
@@ -136,6 +140,126 @@ public final class StatecraftCli implements Callable<Integer> {
                 request = request.withMeasurement(instruction);
             }
             return engine.simulate(request);
+        }
+    }
+
+    @Command(name = "run", description = "Run a circuit from an input file.")
+    static final class Run implements Callable<Integer> {
+        @Spec
+        private CommandSpec spec;
+
+        @Option(names = "--input", required = true, description = "Path to the circuit file")
+        private Path input;
+
+        @Option(names = "--format", description = "Circuit format: {qasm|json|auto}", defaultValue = "auto")
+        private String format;
+
+        @Option(names = "--engine", description = "Simulator engine id", defaultValue = StatevectorEngineIdHolder.ID)
+        private String engineId;
+
+        @Option(names = "--shots", description = "Number of measurement shots to sample", defaultValue = "0")
+        private int shots;
+
+        @Option(names = "--seed", description = "Seed for measurement sampling (requires --shots)")
+        private Long seed;
+
+        @Option(names = "--samples", description = "Return raw samples instead of a histogram when measuring")
+        private boolean samples;
+
+        @Override
+        public Integer call() {
+            validateOptions();
+            CircuitFormat selectedFormat = parseFormat();
+            QuantumCircuit circuit = parseCircuit(selectedFormat);
+            SimulatorEngine engine = loadEngine(engineId);
+            SimulationResult result = engine.simulate(buildRequest(circuit));
+
+            PrintWriter out = spec.commandLine().getOut();
+            out.println("Running circuit from " + input.toAbsolutePath());
+            result.finalState().ifPresentOrElse(
+                    state -> {
+                        out.println("Final state amplitudes (non-zero shown):");
+                        printState(out, state, circuit.qubitCount());
+                    },
+                    () -> out.println("Final amplitudes omitted (shots-only request)."));
+            result.measurement().ifPresent(measurement -> printMeasurement(out, measurement));
+            out.flush();
+            return CommandLine.ExitCode.OK;
+        }
+
+        private void validateOptions() {
+            CommandLine commandLine = spec.commandLine();
+            if (shots < 0) {
+                throw new CommandLine.ParameterException(commandLine,
+                        "--shots must be non-negative");
+            }
+            if (samples && shots == 0) {
+                throw new CommandLine.ParameterException(commandLine,
+                        "--samples requires --shots to be provided");
+            }
+            if (seed != null && shots == 0) {
+                throw new CommandLine.ParameterException(commandLine,
+                        "--seed requires --shots to be provided");
+            }
+        }
+
+        private CircuitFormat parseFormat() {
+            try {
+                return CircuitFormat.fromOption(format);
+            } catch (IllegalArgumentException e) {
+                throw new CommandLine.ParameterException(spec.commandLine(), e.getMessage(), e);
+            }
+        }
+
+        private QuantumCircuit parseCircuit(CircuitFormat selectedFormat) {
+            try {
+                return CircuitParsers.parse(input, selectedFormat);
+            } catch (CircuitParseException e) {
+                throw new CommandLine.ParameterException(spec.commandLine(), formatParseError(e), e);
+            }
+        }
+
+        private SimulationRequest buildRequest(QuantumCircuit circuit) {
+            SimulationRequest request = SimulationRequest.zeroState(circuit);
+            if (shots > 0) {
+                MeasurementInstruction instruction = samples
+                        ? MeasurementInstruction.samplesAll(shots)
+                        : MeasurementInstruction.countsAll(shots);
+                if (seed != null) {
+                    instruction = instruction.withSeed(seed);
+                }
+                request = request.withMeasurement(instruction);
+            }
+            return request;
+        }
+
+        private SimulatorEngine loadEngine(String id) {
+            var loader = ServiceLoader.load(SimulatorEngine.class);
+            var engines = new ArrayList<SimulatorEngine>();
+            for (var engine : loader) {
+                engines.add(engine);
+                if (engine.id().equals(id)) {
+                    return engine;
+                }
+            }
+            engines.sort(Comparator.comparing(SimulatorEngine::id));
+            List<String> ids = engines.stream().map(SimulatorEngine::id).toList();
+            String available = ids.isEmpty() ? "(none)" : String.join(", ", ids);
+            throw new CommandLine.ParameterException(
+                    spec.commandLine(),
+                    "Unknown engine '" + id + "'. Available: " + available);
+        }
+
+        private static String formatParseError(CircuitParseException e) {
+            String message = e.getMessage();
+            if (e.line().isPresent()) {
+                message += " (line " + e.line().getAsInt();
+                if (e.column().isPresent()) {
+                    message += ", column " + e.column().getAsInt();
+                }
+                message += ")";
+            }
+            return message;
         }
     }
 

@@ -5,9 +5,10 @@ new measurement and shot-sampling capabilities exposed by the engine module.
 
 ## Request API
 
-- `SimulationRequest` now carries an optional `MeasurementInstruction` and a
-  `returnFinalState` flag. Callers can continue to omit both fields to retrieve
-  only the final amplitudes, or attach an instruction to request sampling.
+- `SimulationRequest` carries an optional `MeasurementInstruction`, optional
+  noise configuration, and a `returnFinalState` flag. Callers can continue to
+  omit the extra fields to retrieve only the final amplitudes, or attach an
+  instruction to request sampling.
 - `MeasurementInstruction` captures:
   - `shots`: strictly positive integer specifying how many samples to draw.
   - `mode`: either `COUNTS` (histogram of outcomes) or `SAMPLES` (raw outcomes).
