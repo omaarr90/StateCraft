@@ -42,11 +42,40 @@ public final class NoiseModel {
     // Noise after specific gate types (class -> list of channels)
     private final Map<Class<? extends Operation>, List<ErrorChannel>> gateNoise;
 
-    // Noise on specific qubits (qubit -> list of channels)
+    // Idle-time decoherence templates on specific qubits (qubit -> list of channels)
     private final Map<Integer, List<ErrorChannel>> qubitNoise;
 
     // Noise after every gate operation
     private final List<ErrorChannel> globalNoise;
+
+    /**
+     * Channel scheduled with explicit target qubits for one simulation step.
+     */
+    public record ScheduledChannel(ErrorChannel channel, int[] targetQubits) {
+        public ScheduledChannel {
+            Objects.requireNonNull(channel, "channel");
+            Objects.requireNonNull(targetQubits, "targetQubits");
+            if (targetQubits.length == 0) {
+                throw new IllegalArgumentException("targetQubits must not be empty");
+            }
+            int[] copy = targetQubits.clone();
+            Set<Integer> seen = new HashSet<>();
+            for (int qubit : copy) {
+                if (qubit < 0) {
+                    throw new IllegalArgumentException("qubit index must be non-negative");
+                }
+                if (!seen.add(qubit)) {
+                    throw new IllegalArgumentException("duplicate qubit index: " + qubit);
+                }
+            }
+            targetQubits = copy;
+        }
+
+        @Override
+        public int[] targetQubits() {
+            return targetQubits.clone();
+        }
+    }
 
     // Private constructor for Builder
     private NoiseModel(Builder builder) {
@@ -103,12 +132,9 @@ public final class NoiseModel {
     /**
      * Legacy fluent method: Adds noise that applies on specific qubits.
      * <p>
-     * This is useful for modeling decoherence that occurs even when no gates are
-     * applied.
-     * Note: Current implementation applies this noise whenever the qubit is
-     * involved in
-     * an operation, not during true idle times (which would require circuit
-     * scheduling).
+     * This is useful for modeling decoherence that accumulates while qubits are
+     * idle. The channel is applied to registered qubits whenever they are not part
+     * of the currently executing operation.
      * <p>
      * Note: This method mutates the NoiseModel and is provided for backward
      * compatibility.
@@ -121,9 +147,8 @@ public final class NoiseModel {
     public NoiseModel onQubits(ErrorChannel channel, int... qubits) {
         Objects.requireNonNull(channel, "channel");
         Objects.requireNonNull(qubits, "qubits");
-        if (qubits.length == 0) {
-            throw new IllegalArgumentException("must specify at least one qubit");
-        }
+        validateQubitTargets(qubits);
+        validateIdleChannel(channel);
         for (int qubit : qubits) {
             qubitNoise.computeIfAbsent(qubit, k -> new ArrayList<>()).add(channel);
         }
@@ -152,7 +177,8 @@ public final class NoiseModel {
      * This includes:
      * <ul>
      * <li>Channels registered for this specific gate type</li>
-     * <li>Channels registered for qubits involved in this operation</li>
+     * <li>Idle-time channels registered for qubits <em>not</em> involved in this
+     * operation</li>
      * <li>Global channels that apply after all gates</li>
      * </ul>
      *
@@ -160,26 +186,49 @@ public final class NoiseModel {
      * @return list of error channels to apply (may be empty)
      */
     public List<ErrorChannel> channelsAfter(Operation operation) {
-        Objects.requireNonNull(operation, "operation");
-        List<ErrorChannel> channels = new ArrayList<>();
+        List<ScheduledChannel> scheduledChannels = scheduledChannelsAfter(operation);
+        List<ErrorChannel> channels = new ArrayList<>(scheduledChannels.size());
+        for (ScheduledChannel scheduledChannel : scheduledChannels) {
+            channels.add(scheduledChannel.channel());
+        }
+        return channels;
+    }
 
-        // Add gate-specific noise
+    /**
+     * Returns noise channels scheduled after an operation, including explicit qubit
+     * mappings used for idle-time decoherence.
+     *
+     * @param operation operation that just executed
+     * @return ordered channel schedule with target qubits
+     */
+    public List<ScheduledChannel> scheduledChannelsAfter(Operation operation) {
+        Objects.requireNonNull(operation, "operation");
+        List<ScheduledChannel> channels = new ArrayList<>();
+
+        // Add gate-specific noise.
         List<ErrorChannel> gateChannels = gateNoise.get(operation.getClass());
         if (gateChannels != null) {
-            channels.addAll(gateChannels);
-        }
-
-        // Add qubit-specific noise for affected qubits
-        Set<Integer> affectedQubits = extractAffectedQubits(operation);
-        for (int qubit : affectedQubits) {
-            List<ErrorChannel> qChannels = qubitNoise.get(qubit);
-            if (qChannels != null) {
-                channels.addAll(qChannels);
+            for (ErrorChannel channel : gateChannels) {
+                channels.add(new ScheduledChannel(channel, channel.affectedQubits()));
             }
         }
 
-        // Add global noise
-        channels.addAll(globalNoise);
+        // Add idle-time decoherence for qubits not used by this operation.
+        Set<Integer> affectedQubits = extractAffectedQubits(operation);
+        for (Map.Entry<Integer, List<ErrorChannel>> entry : qubitNoise.entrySet()) {
+            int qubit = entry.getKey();
+            if (affectedQubits.contains(qubit)) {
+                continue;
+            }
+            for (ErrorChannel channel : entry.getValue()) {
+                channels.add(new ScheduledChannel(channel, new int[] {qubit}));
+            }
+        }
+
+        // Add global noise.
+        for (ErrorChannel channel : globalNoise) {
+            channels.add(new ScheduledChannel(channel, channel.affectedQubits()));
+        }
 
         return channels;
     }
@@ -193,8 +242,6 @@ public final class NoiseModel {
 
     private Set<Integer> extractAffectedQubits(Operation operation) {
         Set<Integer> qubits = new HashSet<>();
-        // Use the operation's validateTargets method to infer target qubits
-        // This is a bit of a hack, but works since all operations store their targets
         if (operation instanceof Operation.SingleGateOperation sgo) {
             qubits.add(sgo.qubit());
         } else if (operation instanceof Operation.CnotOperation cnot) {
@@ -216,6 +263,40 @@ public final class NoiseModel {
             }
         }
         return qubits;
+    }
+
+    private static void validateQubitTargets(int[] qubits) {
+        if (qubits.length == 0) {
+            throw new IllegalArgumentException("must specify at least one qubit");
+        }
+        Set<Integer> seen = new HashSet<>();
+        for (int qubit : qubits) {
+            if (qubit < 0) {
+                throw new IllegalArgumentException("qubit index must be non-negative");
+            }
+            if (!seen.add(qubit)) {
+                throw new IllegalArgumentException("duplicate qubit index: " + qubit);
+            }
+        }
+    }
+
+    private static void validateIdleChannel(ErrorChannel channel) {
+        if (!isSingleQubitChannel(channel)) {
+            throw new IllegalArgumentException(
+                    "onQubits requires channels that decompose to single-qubit operators");
+        }
+    }
+
+    private static boolean isSingleQubitChannel(ErrorChannel channel) {
+        if (channel instanceof CompositeChannel composite) {
+            for (ErrorChannel component : composite.getChannels()) {
+                if (!isSingleQubitChannel(component)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        return channel.krausDecomposition().numQubits() == 1;
     }
 
     /**
@@ -253,12 +334,9 @@ public final class NoiseModel {
         /**
          * Adds noise that applies on specific qubits.
          * <p>
-         * This is useful for modeling decoherence that occurs even when no gates are
-         * applied.
-         * Note: Current implementation applies this noise whenever the qubit is
-         * involved in
-         * an operation, not during true idle times (which would require circuit
-         * scheduling).
+         * This is useful for modeling decoherence that accumulates while qubits are
+         * idle. The channel is applied to registered qubits whenever they are not
+         * part of the currently executing operation.
          *
          * @param channel error channel to apply
          * @param qubits  target qubits (must be non-empty)
@@ -269,9 +347,8 @@ public final class NoiseModel {
         public Builder onQubits(ErrorChannel channel, int... qubits) {
             Objects.requireNonNull(channel, "channel");
             Objects.requireNonNull(qubits, "qubits");
-            if (qubits.length == 0) {
-                throw new IllegalArgumentException("must specify at least one qubit");
-            }
+            validateQubitTargets(qubits);
+            validateIdleChannel(channel);
             for (int qubit : qubits) {
                 qubitNoise.computeIfAbsent(qubit, k -> new ArrayList<>()).add(channel);
             }

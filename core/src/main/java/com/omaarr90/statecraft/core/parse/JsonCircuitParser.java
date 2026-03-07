@@ -71,7 +71,8 @@ public final class JsonCircuitParser implements CircuitParser {
                 Integer second = readOptionalInt(operationNode, "second", context);
                 Double angle = readOptionalDouble(operationNode, "angle", context);
                 List<Integer> qubitsList = readOptionalIntList(operationNode, "qubits", context);
-                operations.add(new JsonOperationSpec(gate, target, control, first, second, angle, qubitsList));
+                List<Integer> controls = readOptionalIntList(operationNode, "controls", context);
+                operations.add(new JsonOperationSpec(gate, target, control, first, second, angle, qubitsList, controls));
                 index++;
             }
         }
@@ -89,7 +90,7 @@ public final class JsonCircuitParser implements CircuitParser {
 
         for (JsonOperationSpec operation : definition.operations()) {
             String gate = operation.gate().trim().toLowerCase(Locale.ROOT);
-            if (measurementSeen && !gate.equals("measure")) {
+            if (measurementSeen && !gate.equals("measure") && !gate.equals("barrier")) {
                 throw new CircuitParseException(
                         "Unitary gate '" + gate + "' cannot follow a measurement operation");
             }
@@ -124,6 +125,22 @@ public final class JsonCircuitParser implements CircuitParser {
                     }
                     circuit = circuit.append(CnotGate.of(), control, target);
                 }
+                case "cy" -> {
+                    int control = requireInt(operation.control(), "gate 'cy' requires 'control'");
+                    int target = requireInt(operation.target(), "gate 'cy' requires 'target'");
+                    validateDistinct(control, target, "gate 'cy' requires distinct control and target qubits");
+                    validateIndex(control, qubitCount, "control");
+                    validateIndex(target, qubitCount, "target");
+                    circuit = circuit.appendControlledY(control, target);
+                }
+                case "cz" -> {
+                    int control = requireInt(operation.control(), "gate 'cz' requires 'control'");
+                    int target = requireInt(operation.target(), "gate 'cz' requires 'target'");
+                    validateDistinct(control, target, "gate 'cz' requires distinct control and target qubits");
+                    validateIndex(control, qubitCount, "control");
+                    validateIndex(target, qubitCount, "target");
+                    circuit = circuit.appendControlledZ(control, target);
+                }
                 case "swap" -> {
                     int first = requireInt(operation.first(), "gate 'swap' requires 'first'");
                     int second = requireInt(operation.second(), "gate 'swap' requires 'second'");
@@ -148,14 +165,52 @@ public final class JsonCircuitParser implements CircuitParser {
                     }
                     circuit = circuit.appendControlledPhase(angle, control, target);
                 }
+                case "ccx" -> {
+                    int target = requireInt(operation.target(), "gate 'ccx' requires 'target'");
+                    int[] controls = normalizeControls(operation.controls(), qubitCount,
+                            "gate 'ccx' requires 'controls' with exactly two qubits");
+                    if (controls.length != 2) {
+                        throw new CircuitParseException("gate 'ccx' requires exactly two control qubits");
+                    }
+                    validateTargetNotInControls(target, controls, "gate 'ccx' requires distinct controls and target");
+                    validateIndex(target, qubitCount, "target");
+                    circuit = circuit.appendToffoli(controls[0], controls[1], target);
+                }
+                case "mcx" -> {
+                    int target = requireInt(operation.target(), "gate 'mcx' requires 'target'");
+                    int[] controls = normalizeControls(operation.controls(), qubitCount,
+                            "gate 'mcx' requires 'controls'");
+                    validateTargetNotInControls(target, controls, "gate 'mcx' requires distinct controls and target");
+                    validateIndex(target, qubitCount, "target");
+                    circuit = circuit.appendMultiControl(new PauliX(), target, controls);
+                }
+                case "mcy" -> {
+                    int target = requireInt(operation.target(), "gate 'mcy' requires 'target'");
+                    int[] controls = normalizeControls(operation.controls(), qubitCount,
+                            "gate 'mcy' requires 'controls'");
+                    validateTargetNotInControls(target, controls, "gate 'mcy' requires distinct controls and target");
+                    validateIndex(target, qubitCount, "target");
+                    circuit = circuit.appendMultiControl(new PauliY(), target, controls);
+                }
+                case "mcz" -> {
+                    int target = requireInt(operation.target(), "gate 'mcz' requires 'target'");
+                    int[] controls = normalizeControls(operation.controls(), qubitCount,
+                            "gate 'mcz' requires 'controls'");
+                    validateTargetNotInControls(target, controls, "gate 'mcz' requires distinct controls and target");
+                    validateIndex(target, qubitCount, "target");
+                    circuit = circuit.appendMultiControl(new PauliZ(), target, controls);
+                }
                 case "measure" -> {
                     measurementSeen = true;
                     List<Integer> qubits = operation.qubits();
                     if (qubits == null) {
-                        throw new CircuitParseException("gate 'measure' requires 'qubits'");
+                        qubits = allQubits(qubitCount);
                     }
                     int[] measured = normalizeMeasuredQubits(qubits, qubitCount);
                     circuit = circuit.measure(measured);
+                }
+                case "barrier" -> {
+                    // Barrier has no simulation effect and is accepted as metadata.
                 }
                 default -> throw new CircuitParseException("Unknown gate: '" + operation.gate() + "'");
             }
@@ -246,6 +301,39 @@ public final class JsonCircuitParser implements CircuitParser {
         }
     }
 
+    private static void validateDistinct(int first, int second, String message) {
+        if (first == second) {
+            throw new CircuitParseException(message);
+        }
+    }
+
+    private static void validateTargetNotInControls(int target, int[] controls, String message) {
+        for (int control : controls) {
+            if (control == target) {
+                throw new CircuitParseException(message);
+            }
+        }
+    }
+
+    private static int[] normalizeControls(List<Integer> controls, int qubitCount, String missingMessage) {
+        if (controls == null) {
+            throw new CircuitParseException(missingMessage);
+        }
+        if (controls.isEmpty()) {
+            throw new CircuitParseException("control qubit list must not be empty");
+        }
+        int[] normalized = normalizeMeasuredQubits(controls, qubitCount);
+        return normalized;
+    }
+
+    private static List<Integer> allQubits(int qubitCount) {
+        List<Integer> qubits = new ArrayList<>(qubitCount);
+        for (int qubit = 0; qubit < qubitCount; qubit++) {
+            qubits.add(qubit);
+        }
+        return qubits;
+    }
+
     private static int[] normalizeMeasuredQubits(List<Integer> qubits, int qubitCount) {
         if (qubits.isEmpty()) {
             throw new CircuitParseException("Measurement qubit list must not be empty");
@@ -283,6 +371,7 @@ public final class JsonCircuitParser implements CircuitParser {
             Integer first,
             Integer second,
             Double angle,
-            List<Integer> qubits) {
+            List<Integer> qubits,
+            List<Integer> controls) {
     }
 }

@@ -1,1 +1,3 @@
 com.omaarr90.statecraft.engines.statevector.StatevectorEngine
+com.omaarr90.statecraft.engines.stabilizer.StabilizerEngine
+com.omaarr90.statecraft.engines.tensornetwork.TensorNetworkEngine

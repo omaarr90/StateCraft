@@ -58,6 +58,26 @@ public record QuantumCircuit(int qubitCount, List<QuantumCircuit.Operation> oper
         return appendDiagonalTwoQubit(diagonal, controlQubit, targetQubit);
     }
 
+    public QuantumCircuit appendControlled(SingleQubitGate gate, int controlQubit, int targetQubit) {
+        return appendMultiControl(Objects.requireNonNull(gate, "gate"), targetQubit, controlQubit);
+    }
+
+    public QuantumCircuit appendControlledX(int controlQubit, int targetQubit) {
+        return appendControlled(new PauliX(), controlQubit, targetQubit);
+    }
+
+    public QuantumCircuit appendControlledY(int controlQubit, int targetQubit) {
+        return appendControlled(new PauliY(), controlQubit, targetQubit);
+    }
+
+    public QuantumCircuit appendControlledZ(int controlQubit, int targetQubit) {
+        return appendControlled(new PauliZ(), controlQubit, targetQubit);
+    }
+
+    public QuantumCircuit appendToffoli(int firstControlQubit, int secondControlQubit, int targetQubit) {
+        return appendMultiControl(new PauliX(), targetQubit, firstControlQubit, secondControlQubit);
+    }
+
     public QuantumCircuit appendSwap(int firstQubit, int secondQubit) {
         Operation.SwapOperation operation = new Operation.SwapOperation(firstQubit, secondQubit);
         return appendOperation(operation);

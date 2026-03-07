@@ -1,5 +1,6 @@
 package com.omaarr90.statecraft.core.noise;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -50,7 +51,7 @@ class NoiseModelTest {
 
         Operation op = new QuantumCircuit.Operation.SingleGateOperation(new PauliY(), 2);
         List<ErrorChannel> channels = model.channelsAfter(op);
-        assertEquals(1, channels.size());
+        assertEquals(2, channels.size());
     }
 
     @Test
@@ -78,8 +79,8 @@ class NoiseModelTest {
 
         Operation op = new QuantumCircuit.Operation.SingleGateOperation(new PauliX(), 0);
         List<ErrorChannel> channels = model.channelsAfter(op);
-        // Should have gate-specific + qubit-specific + global = 3 channels
-        assertEquals(3, channels.size());
+        // Should have gate-specific + global; qubit-specific noise is idle-only.
+        assertEquals(2, channels.size());
     }
 
     @Test
@@ -102,6 +103,14 @@ class NoiseModelTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> builder.onQubits(ErrorChannel.phaseFlip(0.01, 0)));
+    }
+
+    @Test
+    void builderRejectsDuplicateQubits() {
+        NoiseModel.Builder builder = NoiseModel.builder();
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> builder.onQubits(ErrorChannel.phaseFlip(0.01, 0), 0, 0));
     }
 
     @Test
@@ -158,6 +167,18 @@ class NoiseModelTest {
 
         Operation opCnot = new QuantumCircuit.Operation.CnotOperation(CnotGate.of(), 0, 1);
         assertEquals(1, model.channelsAfter(opCnot).size());
+    }
+
+    @Test
+    void scheduledChannelsRetargetIdleQubits() {
+        NoiseModel model = NoiseModel.builder()
+                .onQubits(ErrorChannel.phaseFlip(0.1, 0), 1)
+                .build();
+        Operation op = new QuantumCircuit.Operation.SingleGateOperation(new PauliX(), 0);
+
+        List<NoiseModel.ScheduledChannel> scheduled = model.scheduledChannelsAfter(op);
+        assertEquals(1, scheduled.size());
+        assertArrayEquals(new int[] {1}, scheduled.get(0).targetQubits());
     }
 
     @Test

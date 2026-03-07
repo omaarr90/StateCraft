@@ -315,6 +315,47 @@ class StatevectorEngineTest {
         assertThrows(UnsupportedOperationException.class, () -> engine.simulate(request));
     }
 
+    @Test
+    void measurementSeedIsDeterministic() {
+        QuantumCircuit circuit = new QuantumCircuit(3)
+                .append(new Hadamard(), 0)
+                .append(new Hadamard(), 1)
+                .append(CnotGate.of(), 1, 2);
+        MeasurementInstruction instruction = MeasurementInstruction.countsAll(2_048).withSeed(0xD00DL);
+        SimulationRequest request = SimulationRequest.zeroState(circuit).withMeasurement(instruction, false);
+
+        StatevectorEngine engine = new StatevectorEngine();
+        MeasurementResult.Histogram first = (MeasurementResult.Histogram) engine.simulate(request)
+                .measurement().orElseThrow();
+        MeasurementResult.Histogram second = (MeasurementResult.Histogram) engine.simulate(request)
+                .measurement().orElseThrow();
+
+        assertArrayEquals(first.measuredQubits(), second.measuredQubits());
+        assertEquals(first.shots(), second.shots());
+        assertEquals(first.counts(), second.counts());
+    }
+
+    @Test
+    void largeCircuitNearTargetLimitRemainsNumericallySane() {
+        int qubits = 22;
+        QuantumCircuit circuit = new QuantumCircuit(qubits)
+                .append(new PauliX(), 0)
+                .append(new PauliX(), 5)
+                .append(new PauliX(), 21)
+                .append(CnotGate.of(), 21, 1)
+                .append(CnotGate.of(), 0, 2)
+                .appendSwap(5, 3);
+
+        StatevectorEngine engine = new StatevectorEngine();
+        SimulationResult result = engine.simulate(SimulationRequest.zeroState(circuit));
+        StateVector state = result.finalState().orElseThrow();
+
+        int expectedIndex = (1 << 0) | (1 << 1) | (1 << 2) | (1 << 3) | (1 << 21);
+        assertEquals(1.0, state.real(expectedIndex), EPS);
+        assertEquals(0.0, state.imag(expectedIndex), EPS);
+        assertNormalized(state);
+    }
+
     private void assertSimulationMatchesCircuit(QuantumCircuit circuit) {
         StatevectorEngine engine = new StatevectorEngine();
         SimulationResult result = engine.simulate(SimulationRequest.zeroState(circuit));
@@ -328,6 +369,16 @@ class StatevectorEngineTest {
             assertEquals(amp.real(), actual.real(index), EPS, "real mismatch at " + index);
             assertEquals(amp.imag(), actual.imag(index), EPS, "imag mismatch at " + index);
         }
+    }
+
+    private void assertNormalized(StateVector state) {
+        double normSq = 0.0;
+        for (int index = 0; index < state.dimension(); index++) {
+            double real = state.real(index);
+            double imag = state.imag(index);
+            normSq += (real * real) + (imag * imag);
+        }
+        assertEquals(1.0, normSq, 1e-10, "state norm drifted");
     }
 
     private QuantumCircuit randomTwoQubitCircuit(Random random, int depth) {

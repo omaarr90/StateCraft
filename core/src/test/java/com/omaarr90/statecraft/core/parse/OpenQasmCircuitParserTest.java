@@ -1,12 +1,14 @@
 package com.omaarr90.statecraft.core.parse;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.omaarr90.statecraft.core.math.ComplexNumber;
 import com.omaarr90.statecraft.quantum.CnotGate;
 import com.omaarr90.statecraft.quantum.Hadamard;
+import com.omaarr90.statecraft.quantum.PauliX;
 import com.omaarr90.statecraft.quantum.QuantumCircuit;
 import org.junit.jupiter.api.Test;
 
@@ -49,6 +51,51 @@ class OpenQasmCircuitParserTest {
         OpenQasmCircuitParser parser = new OpenQasmCircuitParser();
         CircuitParseException error = assertThrows(CircuitParseException.class, () -> parser.parse(qasm));
         assertTrue(error.getMessage().toLowerCase().contains("measurement"));
+    }
+
+    @Test
+    void controlledAndMultiControlGatesParseAndSimulate() {
+        String qasm = """
+                OPENQASM 3.0;
+                qubit[3] q;
+
+                x q[0];
+                x q[1];
+                ccx q[0], q[1], q[2];
+                cy q[2], q[0];
+                cz q[2], q[1];
+                """;
+
+        OpenQasmCircuitParser parser = new OpenQasmCircuitParser();
+        QuantumCircuit circuit = parser.parse(qasm);
+
+        QuantumCircuit expectedCircuit = new QuantumCircuit(3)
+                .append(new PauliX(), 0)
+                .append(new PauliX(), 1)
+                .appendToffoli(0, 1, 2)
+                .appendControlledY(2, 0)
+                .appendControlledZ(2, 1);
+
+        assertStateMatches(expectedCircuit.apply(), circuit.apply());
+    }
+
+    @Test
+    void registerWideMeasurementParsesToAllQubits() {
+        String qasm = """
+                OPENQASM 3.0;
+                qubit[3] q;
+
+                h q[0];
+                barrier q;
+                measure q;
+                """;
+
+        OpenQasmCircuitParser parser = new OpenQasmCircuitParser();
+        QuantumCircuit circuit = parser.parse(qasm);
+        QuantumCircuit.Operation.MeasureOperation measure = (QuantumCircuit.Operation.MeasureOperation)
+                circuit.operations().get(circuit.operations().size() - 1);
+
+        assertArrayEquals(new int[] {0, 1, 2}, measure.qubits());
     }
 
     private static void assertStateMatches(ComplexNumber[] expected, ComplexNumber[] actual) {

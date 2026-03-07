@@ -85,6 +85,33 @@ class QuantumCircuitTest {
         assertThrows(IllegalArgumentException.class, () -> circuit.append(CnotGate.of(), 0, 0));
     }
 
+    @Test
+    void controlledZAddsPhaseOnDoubleOneState() {
+        QuantumCircuit circuit = new QuantumCircuit(2)
+                .append(new PauliX(), 0)
+                .append(new PauliX(), 1)
+                .appendControlledZ(1, 0);
+        ComplexNumber[] result = circuit.apply();
+        ComplexNumber zero = ComplexNumber.zero();
+        assertComplexEquals(zero, result[0]);
+        assertComplexEquals(zero, result[1]);
+        assertComplexEquals(zero, result[2]);
+        assertComplexEquals(new ComplexNumber(-1.0, 0.0), result[3]);
+    }
+
+    @Test
+    void toffoliFlipsTargetWhenBothControlsAreOne() {
+        QuantumCircuit circuit = new QuantumCircuit(3)
+                .append(new PauliX(), 0)
+                .append(new PauliX(), 1)
+                .appendToffoli(0, 1, 2);
+        ComplexNumber[] result = circuit.apply();
+        for (int index = 0; index < result.length; index++) {
+            ComplexNumber expected = index == 7 ? ComplexNumber.one() : ComplexNumber.zero();
+            assertComplexEquals(expected, result[index]);
+        }
+    }
+
     private void assertComplexEquals(ComplexNumber expected, ComplexNumber actual) {
         assertEquals(expected.real(), actual.real(), EPS, "real parts differ");
         assertEquals(expected.imag(), actual.imag(), EPS, "imag parts differ");

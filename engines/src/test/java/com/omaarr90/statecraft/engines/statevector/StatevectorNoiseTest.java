@@ -121,6 +121,51 @@ class StatevectorNoiseTest {
         assertThrows(IllegalArgumentException.class, () -> new StatevectorEngine().simulate(request));
     }
 
+    @Test
+    void idleDecoherenceUsesMappedQubitInsteadOfChannelTemplate() {
+        QuantumCircuit circuit = new QuantumCircuit(2).append(new Hadamard(), 0);
+        StateVector initialState = StateVector.fromArray(2, new double[] {
+                0.0, 0.0,
+                0.0, 0.0,
+                0.0, 0.0,
+                1.0, 0.0
+        });
+        NoiseModel model = NoiseModel.builder()
+                .onQubits(ErrorChannel.amplitudeDamping(1.0, 0), 0, 1)
+                .build();
+        SimulationRequest request = SimulationRequest.withInitialState(circuit, initialState)
+                .withNoiseModel(model);
+
+        StateVector finalState = new StatevectorEngine().simulate(request).finalState().orElseThrow();
+        double invSqrt2 = 1.0 / Math.sqrt(2.0);
+        assertStateEquals(new double[] {
+                invSqrt2, 0.0,
+                -invSqrt2, 0.0,
+                0.0, 0.0,
+                0.0, 0.0
+        }, finalState);
+    }
+
+    @Test
+    void noiseSeedIsDeterministicAcrossRuns() {
+        ErrorChannel channel = ErrorChannel.depolarizing(0.7, 0);
+        NoiseModel model = NoiseModel.builder()
+                .afterAllGates(channel)
+                .build();
+        QuantumCircuit circuit = new QuantumCircuit(1).append(new PauliX(), 0);
+        long seed = 0x5EEDL;
+
+        SimulationRequest request = SimulationRequest.zeroState(circuit)
+                .withNoiseModel(model)
+                .withNoiseSeed(seed);
+
+        StatevectorEngine engine = new StatevectorEngine();
+        StateVector first = engine.simulate(request).finalState().orElseThrow();
+        StateVector second = engine.simulate(request).finalState().orElseThrow();
+
+        assertArrayEquals(first.data(), second.data(), EPS);
+    }
+
     private static double[] applyOperator(double[] state, KrausOperator operator) {
         double a0r = state[0];
         double a0i = state[1];

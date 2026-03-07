@@ -18,10 +18,12 @@ import com.omaarr90.statecraft.quantum.SingleQubitGate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.SplittableRandom;
 
 /**
@@ -328,40 +330,62 @@ public final class StatevectorEngine implements SimulatorEngine {
 
     private void applyNoiseAfterOperation(double[] state, QuantumCircuit.Operation operation,
             NoiseModel noiseModel, SplittableRandom rng, int qubitCount) {
-        List<ErrorChannel> channels = noiseModel.channelsAfter(operation);
+        List<NoiseModel.ScheduledChannel> channels = noiseModel.scheduledChannelsAfter(operation);
         if (channels.isEmpty()) {
             return;
         }
-        for (ErrorChannel channel : channels) {
-            applyErrorChannel(state, channel, rng, qubitCount);
+        for (NoiseModel.ScheduledChannel scheduledChannel : channels) {
+            applyErrorChannel(state, scheduledChannel.channel(), scheduledChannel.targetQubits(), rng, qubitCount);
         }
     }
 
     private void applyErrorChannel(double[] state, ErrorChannel channel,
-            SplittableRandom rng, int qubitCount) {
+            int[] mappedQubits, SplittableRandom rng, int qubitCount) {
         if (channel instanceof CompositeChannel composite) {
+            int[] componentMapping = mappedQubits != null && mappedQubits.length == 1
+                    ? mappedQubits
+                    : null;
             for (ErrorChannel component : composite.getChannels()) {
-                applyErrorChannel(state, component, rng, qubitCount);
+                applyErrorChannel(state, component, componentMapping, rng, qubitCount);
             }
             return;
         }
-        int[] qubits = channel.affectedQubits();
-        if (qubits.length != 1) {
-            throw new UnsupportedOperationException(
-                    "Only single-qubit noise channels are supported, got " + qubits.length);
-        }
-        int target = qubits[0];
-        if (target < 0 || target >= qubitCount) {
-            throw new IllegalArgumentException("noise channel qubit out of range: " + target);
-        }
+        int[] targets = resolveTargets(mappedQubits, channel, qubitCount);
         KrausDecomposition decomposition = channel.krausDecomposition();
-        if (decomposition.numQubits() != 1) {
+        int decompositionQubits = decomposition.numQubits();
+        if (decompositionQubits == 1) {
+            for (int target : targets) {
+                int operatorIndex = decomposition.sampleOperator(rng);
+                KrausOperator operator = decomposition.operators().get(operatorIndex);
+                applySingleQubitKraus(state, target, operator);
+            }
+            return;
+        }
+        if (decompositionQubits != targets.length) {
             throw new UnsupportedOperationException(
-                    "Only single-qubit Kraus operators are supported, got " + decomposition.numQubits());
+                    "Noise channel target/decomposition mismatch: decomposition qubits="
+                            + decompositionQubits + ", targets=" + targets.length);
         }
         int operatorIndex = decomposition.sampleOperator(rng);
         KrausOperator operator = decomposition.operators().get(operatorIndex);
-        applySingleQubitKraus(state, target, operator);
+        applyMultiQubitKraus(state, targets, operator);
+    }
+
+    private static int[] resolveTargets(int[] mappedQubits, ErrorChannel channel, int qubitCount) {
+        int[] targets = mappedQubits != null ? mappedQubits.clone() : channel.affectedQubits();
+        if (targets.length == 0) {
+            throw new IllegalArgumentException("noise channel must target at least one qubit");
+        }
+        Set<Integer> seen = new HashSet<>();
+        for (int target : targets) {
+            if (target < 0 || target >= qubitCount) {
+                throw new IllegalArgumentException("noise channel qubit out of range: " + target);
+            }
+            if (!seen.add(target)) {
+                throw new IllegalArgumentException("noise channel contains duplicate qubit: " + target);
+            }
+        }
+        return targets;
     }
 
     private void applySingleQubitKraus(double[] state, int target, KrausOperator operator) {
@@ -379,6 +403,68 @@ public final class StatevectorEngine implements SimulatorEngine {
                 m01.real(), m01.imag(),
                 m10.real(), m10.imag(),
                 m11.real(), m11.imag());
+        renormalizeState(state);
+    }
+
+    private void applyMultiQubitKraus(double[] state, int[] targets, KrausOperator operator) {
+        if (operator.numQubits() != targets.length) {
+            throw new UnsupportedOperationException(
+                    "Kraus operator qubit count mismatch: operator="
+                            + operator.numQubits() + ", targets=" + targets.length);
+        }
+        int localDimension = 1 << targets.length;
+        int[] offsets = new int[localDimension];
+        int targetMask = 0;
+        for (int localIndex = 0; localIndex < localDimension; localIndex++) {
+            int offset = 0;
+            for (int bit = 0; bit < targets.length; bit++) {
+                if (((localIndex >>> bit) & 1) != 0) {
+                    int mask = 1 << targets[bit];
+                    offset |= mask;
+                    targetMask |= mask;
+                }
+            }
+            offsets[localIndex] = offset;
+        }
+
+        ComplexNumber[] matrix = operator.matrix();
+        double[] input = new double[localDimension << 1];
+        double[] output = new double[localDimension << 1];
+        int dimension = state.length >> 1;
+
+        for (int basis = 0; basis < dimension; basis++) {
+            if ((basis & targetMask) != 0) {
+                continue;
+            }
+            for (int col = 0; col < localDimension; col++) {
+                int sourceIndex = (basis | offsets[col]) << 1;
+                int sourceBase = col << 1;
+                input[sourceBase] = state[sourceIndex];
+                input[sourceBase + 1] = state[sourceIndex + 1];
+            }
+            for (int row = 0; row < localDimension; row++) {
+                double sumReal = 0.0;
+                double sumImag = 0.0;
+                int matrixRow = row * localDimension;
+                for (int col = 0; col < localDimension; col++) {
+                    ComplexNumber coeff = matrix[matrixRow + col];
+                    int sourceBase = col << 1;
+                    double ampReal = input[sourceBase];
+                    double ampImag = input[sourceBase + 1];
+                    sumReal += coeff.real() * ampReal - coeff.imag() * ampImag;
+                    sumImag += coeff.real() * ampImag + coeff.imag() * ampReal;
+                }
+                int targetBase = row << 1;
+                output[targetBase] = sumReal;
+                output[targetBase + 1] = sumImag;
+            }
+            for (int row = 0; row < localDimension; row++) {
+                int destinationIndex = (basis | offsets[row]) << 1;
+                int sourceBase = row << 1;
+                state[destinationIndex] = output[sourceBase];
+                state[destinationIndex + 1] = output[sourceBase + 1];
+            }
+        }
         renormalizeState(state);
     }
 

@@ -63,6 +63,14 @@ class SimulationRequestTest {
     }
 
     @Test
+    void measurementQubitOutOfRangeThrows() {
+        QuantumCircuit circuit = new QuantumCircuit(2);
+        MeasurementInstruction instruction = MeasurementInstruction.counts(32, 2);
+        assertThrows(IllegalArgumentException.class,
+                () -> SimulationRequest.zeroState(circuit).withMeasurement(instruction));
+    }
+
+    @Test
     void noiseModelAndSeedAreStored() {
         QuantumCircuit circuit = new QuantumCircuit(1);
         NoiseModel model = NoiseModel.builder()
