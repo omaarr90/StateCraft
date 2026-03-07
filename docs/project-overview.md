@@ -4,7 +4,7 @@
 StateCraft is a Java-based quantum circuit simulator that targets high
 performance and portability. The core library models circuits and noise in
 plain Java, while the engine layer plugs in different simulation backends
-(statevector today, stabilizer and tensor-network engines planned). The
+(statevector, stabilizer, and tensor-network). The
 application module exposes a CLI and GraalVM native-image packaging so users
 can run simulations without a JVM at runtime.
 
@@ -26,7 +26,7 @@ using Kraus sampling.
 
 ## Repository structure
 - `core/`: math primitives, quantum circuit model, noise model, engine API.
-- `engines/`: simulation backends (statevector engine currently implemented).
+- `engines/`: simulation backends (statevector, stabilizer, tensor-network).
 - `app/`: CLI wrapper with GraalVM native-image build configuration.
 - `docs/`: progress reports, ADRs, and planning deliverables.
 - `gradle/`, `build.gradle.kts`, `settings.gradle.kts`: Gradle build system.
@@ -138,6 +138,24 @@ using Kraus sampling.
 - Scalar fallbacks cover tail elements when vector widths do not align.
 - Microbenchmark `StatevectorKernelMicrobenchmark` tracks AoS throughput.
 
+### Tensor-network engine (MPS v1)
+- `TensorNetworkEngine` is a real MPS backend with SVD truncation.
+- Defaults: max bond dimension `256`, singular cutoff `1e-10`.
+- Supported operations in v1:
+  - single-qubit gates
+  - CNOT
+  - two-qubit diagonal operations
+  - SWAP
+  - terminal measurement suffix
+- Measurements support seeded shots and return bitstring result variants for
+  measured widths above 31 qubits.
+- Current v1 limitations:
+  - no noisy simulation
+  - no arbitrary two-qubit unitary support
+  - no multi-control gate support
+  - no dense final-state materialization above 20 qubits
+- See `docs/core/tensor-network-engine.md` for details.
+
 ## CLI application
 - `statecraft engines`: lists available engines discovered via ServiceLoader.
 - `statecraft demo`: runs a Bell-state circuit and optionally samples shots.
@@ -168,7 +186,8 @@ using Kraus sampling.
   intentionally minimal; expand grammar coverage and gate support over time.
 - Noise simulation is limited to single-qubit Kraus channels; idle-time noise
   and multi-qubit channels are not modeled.
-- Alternative engines (stabilizer, tensor network) are not implemented.
+- Tensor-network v1 intentionally rejects arbitrary two-qubit unitary and
+  multi-control operations.
 - CI is disabled while waiting for GraalVM 25 support in GitHub Actions.
 - Mid-circuit measurement collapse is not modeled; measurements must be a
   contiguous suffix.

@@ -5,6 +5,8 @@ plugins { `java-library` }
 
 dependencies {
     api(project(":core"))
+    implementation(libs.ejml.ddense)
+    implementation(libs.ejml.zdense)
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)

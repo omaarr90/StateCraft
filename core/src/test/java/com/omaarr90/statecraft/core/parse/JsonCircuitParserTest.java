@@ -11,6 +11,8 @@ import com.omaarr90.statecraft.quantum.Hadamard;
 import com.omaarr90.statecraft.quantum.PauliX;
 import com.omaarr90.statecraft.quantum.PauliY;
 import com.omaarr90.statecraft.quantum.QuantumCircuit;
+import com.omaarr90.statecraft.quantum.SGate;
+import com.omaarr90.statecraft.quantum.SdgGate;
 import org.junit.jupiter.api.Test;
 
 class JsonCircuitParserTest {
@@ -102,6 +104,28 @@ class JsonCircuitParserTest {
                 circuit.operations().get(circuit.operations().size() - 1);
 
         assertArrayEquals(new int[] {0, 1, 2}, measure.qubits());
+    }
+
+    @Test
+    void sAndSdgParseAndSimulate() {
+        String json = """
+                {
+                  "qubits": 1,
+                  "operations": [
+                    { "gate": "x", "target": 0 },
+                    { "gate": "s", "target": 0 },
+                    { "gate": "sdg", "target": 0 }
+                  ]
+                }
+                """;
+
+        QuantumCircuit circuit = new JsonCircuitParser().parse(json);
+        QuantumCircuit expectedCircuit = new QuantumCircuit(1)
+                .append(new PauliX(), 0)
+                .append(new SGate(), 0)
+                .append(new SdgGate(), 0);
+
+        assertStateMatches(expectedCircuit.apply(), circuit.apply());
     }
 
     private static void assertStateMatches(ComplexNumber[] expected, ComplexNumber[] actual) {

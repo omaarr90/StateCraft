@@ -91,14 +91,14 @@ class CrossEngineConformanceTest {
     }
 
     private static QuantumCircuit cliffordConformanceCircuit() {
-        return new QuantumCircuit(3)
+        return new QuantumCircuit(4)
                 .append(new Hadamard(), 0)
                 .append(CnotGate.of(), 0, 1)
                 .append(new PauliX(), 2)
-                .appendControlledY(1, 2)
-                .appendControlledZ(0, 2)
                 .appendSwap(1, 2)
-                .append(new Hadamard(), 2);
+                .appendControlledPhase(Math.PI, 2, 3)
+                .append(CnotGate.of(), 3, 0)
+                .append(new Hadamard(), 3);
     }
 
     private static SimulatorEngine loadEngine(String id) {

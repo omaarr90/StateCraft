@@ -10,6 +10,8 @@ import com.omaarr90.statecraft.quantum.PauliX;
 import com.omaarr90.statecraft.quantum.PauliY;
 import com.omaarr90.statecraft.quantum.PauliZ;
 import com.omaarr90.statecraft.quantum.QuantumCircuit;
+import com.omaarr90.statecraft.quantum.SGate;
+import com.omaarr90.statecraft.quantum.SdgGate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -114,6 +116,16 @@ public final class JsonCircuitParser implements CircuitParser {
                     int target = requireInt(operation.target(), "gate 'z' requires 'target'");
                     validateIndex(target, qubitCount, "target");
                     circuit = circuit.append(new PauliZ(), target);
+                }
+                case "s" -> {
+                    int target = requireInt(operation.target(), "gate 's' requires 'target'");
+                    validateIndex(target, qubitCount, "target");
+                    circuit = circuit.append(new SGate(), target);
+                }
+                case "sdg" -> {
+                    int target = requireInt(operation.target(), "gate 'sdg' requires 'target'");
+                    validateIndex(target, qubitCount, "target");
+                    circuit = circuit.append(new SdgGate(), target);
                 }
                 case "cx" -> {
                     int control = requireInt(operation.control(), "gate 'cx' requires 'control'");

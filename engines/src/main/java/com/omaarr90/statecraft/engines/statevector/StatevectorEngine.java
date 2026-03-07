@@ -46,9 +46,13 @@ public final class StatevectorEngine implements SimulatorEngine {
         int dimension = 1 << qubitCount;
         double[] state = new double[dimension << 1];
 
-        request.initialState().ifPresentOrElse(
-                initial -> populateFromState(initial, state),
-                () -> resetZeroState(state));
+        if (request.initialState().isPresent()) {
+            populateFromState(request.initialState().orElseThrow(), state);
+        } else if (request.basisStateQubits().isPresent()) {
+            resetBasisState(state, request.basisStateQubits().orElseThrow());
+        } else {
+            resetZeroState(state);
+        }
 
         NoiseModel noiseModel = request.noiseModel().orElse(null);
         boolean applyNoise = noiseModel != null && noiseModel.hasNoise();
@@ -194,7 +198,7 @@ public final class StatevectorEngine implements SimulatorEngine {
         double g11r = gate.element(1, 1).real();
         double g11i = gate.element(1, 1).imag();
         StatevectorKernels.applyMultiControlledSingleGate(state, operation.targetQubit(),
-                operation.controlMask(),
+                computeControlMask(operation.controlQubits()),
                 g00r, g00i, g01r, g01i, g10r, g10i, g11r, g11i);
     }
 
@@ -322,6 +326,23 @@ public final class StatevectorEngine implements SimulatorEngine {
     private static void resetZeroState(double[] state) {
         Arrays.fill(state, 0.0);
         state[0] = 1.0;
+    }
+
+    private static void resetBasisState(double[] state, int[] qubits) {
+        Arrays.fill(state, 0.0);
+        int basisIndex = 0;
+        for (int qubit : qubits) {
+            basisIndex |= 1 << qubit;
+        }
+        state[basisIndex << 1] = 1.0;
+    }
+
+    private static int computeControlMask(int[] controlQubits) {
+        int mask = 0;
+        for (int control : controlQubits) {
+            mask |= 1 << control;
+        }
+        return mask;
     }
 
     private static StateVector toStateVector(int qubitCount, double[] state) {

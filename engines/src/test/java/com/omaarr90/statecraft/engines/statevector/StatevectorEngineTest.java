@@ -66,6 +66,21 @@ class StatevectorEngineTest {
     }
 
     @Test
+    void simulateFromBasisStateMatchesCircuitApply() {
+        QuantumCircuit circuit = new QuantumCircuit(2)
+                .append(new Hadamard(), 1)
+                .append(new PauliZ(), 0);
+
+        StatevectorEngine engine = new StatevectorEngine();
+        SimulationResult result = engine.simulate(SimulationRequest.zeroState(circuit).withBasisState(0));
+
+        ComplexNumber[] expected = circuit.apply(new ComplexNumber[] {
+                ComplexNumber.zero(), ComplexNumber.one(), ComplexNumber.zero(), ComplexNumber.zero()
+        });
+        assertStateMatches(expected, result.finalState().orElseThrow());
+    }
+
+    @Test
     void simulateIdentityCircuitPreservesInitialStateAmplitudes() {
         int qubits = 3;
         QuantumCircuit circuit = new QuantumCircuit(qubits);

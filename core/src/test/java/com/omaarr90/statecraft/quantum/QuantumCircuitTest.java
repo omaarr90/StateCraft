@@ -52,6 +52,21 @@ class QuantumCircuitTest {
     }
 
     @Test
+    void sAndSdgApplyExpectedPhases() {
+        QuantumCircuit sCircuit = new QuantumCircuit(1).append(new SGate(), 0);
+        QuantumCircuit sdgCircuit = new QuantumCircuit(1).append(new SdgGate(), 0);
+        ComplexNumber[] initial = { ComplexNumber.zero(), ComplexNumber.one() };
+
+        ComplexNumber[] sResult = sCircuit.apply(initial);
+        ComplexNumber[] sdgResult = sdgCircuit.apply(initial);
+
+        assertComplexEquals(ComplexNumber.zero(), sResult[0]);
+        assertComplexEquals(new ComplexNumber(0.0, 1.0), sResult[1]);
+        assertComplexEquals(ComplexNumber.zero(), sdgResult[0]);
+        assertComplexEquals(new ComplexNumber(0.0, -1.0), sdgResult[1]);
+    }
+
+    @Test
     void cnotFlipsTargetWhenControlIsOne() {
         QuantumCircuit circuit = new QuantumCircuit(2)
                 .append(new PauliX(), 1)

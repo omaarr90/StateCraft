@@ -9,6 +9,7 @@ import com.omaarr90.statecraft.core.engine.MeasurementResult;
 import com.omaarr90.statecraft.core.engine.SimulationRequest;
 import com.omaarr90.statecraft.core.engine.SimulationResult;
 import com.omaarr90.statecraft.core.engine.SimulatorEngine;
+import com.omaarr90.statecraft.core.math.ComplexNumber;
 import com.omaarr90.statecraft.core.noise.ErrorChannel;
 import com.omaarr90.statecraft.core.noise.NoiseModel;
 import com.omaarr90.statecraft.engines.statevector.StatevectorEngine;
@@ -19,6 +20,7 @@ import com.omaarr90.statecraft.quantum.QuantumCircuit;
 import com.omaarr90.statecraft.quantum.StateVector;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.ServiceLoader;
 import org.junit.jupiter.api.Test;
 
@@ -48,8 +50,8 @@ class TensorNetworkEngineTest {
                 .append(CnotGate.of(), 0, 1)
                 .append(new PauliX(), 3)
                 .appendSwap(1, 3)
-                .appendControlledPhase(Math.PI, 0, 2)
-                .appendMultiControl(new PauliX(), 2, 1);
+                .appendControlledPhase(Math.PI / 3.0, 0, 2)
+                .append(CnotGate.of(), 2, 3);
 
         SimulationRequest request = SimulationRequest.zeroState(circuit);
         SimulationResult tensorResult = new TensorNetworkEngine().simulate(request);
@@ -119,6 +121,81 @@ class TensorNetworkEngineTest {
         SimulationRequest request = SimulationRequest.zeroState(circuit);
 
         assertThrows(UnsupportedOperationException.class, () -> new TensorNetworkEngine().simulate(request));
+    }
+
+    @Test
+    void rejectsArbitraryTwoQubitUnitary() {
+        ComplexNumber[] identity = new ComplexNumber[] {
+            ComplexNumber.one(), ComplexNumber.zero(), ComplexNumber.zero(), ComplexNumber.zero(),
+            ComplexNumber.zero(), ComplexNumber.one(), ComplexNumber.zero(), ComplexNumber.zero(),
+            ComplexNumber.zero(), ComplexNumber.zero(), ComplexNumber.one(), ComplexNumber.zero(),
+            ComplexNumber.zero(), ComplexNumber.zero(), ComplexNumber.zero(), ComplexNumber.one()
+        };
+        QuantumCircuit circuit = new QuantumCircuit(2).appendTwoQubitUnitary(identity, 0, 1);
+
+        UnsupportedOperationException exception = assertThrows(
+                UnsupportedOperationException.class,
+                () -> new TensorNetworkEngine().simulate(SimulationRequest.zeroState(circuit)));
+        assertTrue(exception.getMessage().contains("arbitrary two-qubit"));
+    }
+
+    @Test
+    void rejectsMultiControlOperation() {
+        QuantumCircuit circuit = new QuantumCircuit(3).appendMultiControl(new PauliX(), 2, 0, 1);
+
+        UnsupportedOperationException exception = assertThrows(
+                UnsupportedOperationException.class,
+                () -> new TensorNetworkEngine().simulate(SimulationRequest.zeroState(circuit)));
+        assertTrue(exception.getMessage().contains("multi-control"));
+    }
+
+    @Test
+    void returnsBitstringHistogramForWideMeasurements() {
+        QuantumCircuit circuit = new QuantumCircuit(40);
+        SimulationRequest request = SimulationRequest.zeroState(circuit)
+                .withMeasurement(MeasurementInstruction.countsAll(4).withSeed(7L), false);
+
+        SimulationResult result = new TensorNetworkEngine().simulate(request);
+        MeasurementResult.BitstringHistogram histogram =
+                (MeasurementResult.BitstringHistogram) result.measurement().orElseThrow();
+        assertEquals(4, histogram.shots());
+        assertEquals(1, histogram.counts().size());
+        assertEquals(4, histogram.counts().getOrDefault("0".repeat(40), 0));
+    }
+
+    @Test
+    void rejectsLargeFinalStateMaterialization() {
+        QuantumCircuit circuit = new QuantumCircuit(TensorNetworkEngine.MAX_FINAL_STATE_QUBITS + 1);
+        UnsupportedOperationException exception = assertThrows(
+                UnsupportedOperationException.class,
+                () -> new TensorNetworkEngine().simulate(SimulationRequest.zeroState(circuit)));
+        assertTrue(exception.getMessage().contains("cannot materialize amplitudes"));
+    }
+
+    @Test
+    void largeShallowCircuitSmokeRunsInShotsOnlyMode() {
+        QuantumCircuit circuit = randomShallowCircuit(50, 40, 12345L);
+        SimulationRequest request = SimulationRequest.zeroState(circuit)
+                .withMeasurement(MeasurementInstruction.countsAll(4).withSeed(99L), false);
+
+        SimulationResult result = new TensorNetworkEngine().simulate(request);
+        MeasurementResult.BitstringHistogram histogram =
+                (MeasurementResult.BitstringHistogram) result.measurement().orElseThrow();
+        assertTrue(result.finalState().isEmpty());
+        assertEquals(4, histogram.shots());
+        assertEquals(4, histogram.counts().values().stream().mapToInt(Integer::intValue).sum());
+    }
+
+    private static QuantumCircuit randomShallowCircuit(int qubits, int depth, long seed) {
+        Random random = new Random(seed);
+        QuantumCircuit circuit = new QuantumCircuit(qubits);
+        for (int layer = 0; layer < depth; layer++) {
+            int qubit = random.nextInt(qubits);
+            circuit = random.nextBoolean()
+                    ? circuit.append(new Hadamard(), qubit)
+                    : circuit.append(new PauliX(), qubit);
+        }
+        return circuit;
     }
 
     private static void assertStateEquals(StateVector expected, StateVector actual) {

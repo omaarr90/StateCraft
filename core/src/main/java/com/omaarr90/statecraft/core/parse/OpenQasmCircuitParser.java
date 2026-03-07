@@ -6,6 +6,8 @@ import com.omaarr90.statecraft.quantum.PauliX;
 import com.omaarr90.statecraft.quantum.PauliY;
 import com.omaarr90.statecraft.quantum.PauliZ;
 import com.omaarr90.statecraft.quantum.QuantumCircuit;
+import com.omaarr90.statecraft.quantum.SGate;
+import com.omaarr90.statecraft.quantum.SdgGate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -42,6 +44,8 @@ public final class OpenQasmCircuitParser implements CircuitParser {
                     case "x" -> circuit.append(new PauliX(), target);
                     case "y" -> circuit.append(new PauliY(), target);
                     case "z" -> circuit.append(new PauliZ(), target);
+                    case "s" -> circuit.append(new SGate(), target);
+                    case "sdg" -> circuit.append(new SdgGate(), target);
                     default -> throw new CircuitParseException(
                             "Unknown gate: " + single.gate(),
                             single.location.line(),
@@ -303,7 +307,7 @@ public final class OpenQasmCircuitParser implements CircuitParser {
             SourceLocation location = new SourceLocation(gateToken.line, gateToken.column);
 
             return switch (gate) {
-                case "h", "x", "y", "z" -> {
+                case "h", "x", "y", "z", "s", "sdg" -> {
                     int target = parseQubitOperand();
                     expectSymbol(";");
                     yield new Instruction.SingleGate(gate, target, location);

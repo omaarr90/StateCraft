@@ -91,6 +91,9 @@ public final class StatecraftCli implements Callable<Integer> {
         @Option(names = "--samples", description = "Return raw samples instead of a histogram when measuring")
         private boolean samples;
 
+        @Option(names = "--omit-final-state", description = "Skip final amplitudes when --shots is provided")
+        private boolean omitFinalState;
+
         @Override
         public Integer call() {
             validateOptions();
@@ -125,6 +128,10 @@ public final class StatecraftCli implements Callable<Integer> {
                 throw new CommandLine.ParameterException(commandLine,
                         "--seed requires --shots to be provided");
             }
+            if (omitFinalState && shots == 0) {
+                throw new CommandLine.ParameterException(commandLine,
+                        "--omit-final-state requires --shots to be provided");
+            }
         }
 
         private SimulationResult simulate(QuantumCircuit circuit) {
@@ -137,7 +144,7 @@ public final class StatecraftCli implements Callable<Integer> {
                 if (seed != null) {
                     instruction = instruction.withSeed(seed);
                 }
-                request = request.withMeasurement(instruction);
+                request = request.withMeasurement(instruction, !omitFinalState);
             }
             return engine.simulate(request);
         }
@@ -165,6 +172,9 @@ public final class StatecraftCli implements Callable<Integer> {
 
         @Option(names = "--samples", description = "Return raw samples instead of a histogram when measuring")
         private boolean samples;
+
+        @Option(names = "--omit-final-state", description = "Skip final amplitudes when --shots is provided")
+        private boolean omitFinalState;
 
         @Override
         public Integer call() {
@@ -201,6 +211,10 @@ public final class StatecraftCli implements Callable<Integer> {
                 throw new CommandLine.ParameterException(commandLine,
                         "--seed requires --shots to be provided");
             }
+            if (omitFinalState && shots == 0) {
+                throw new CommandLine.ParameterException(commandLine,
+                        "--omit-final-state requires --shots to be provided");
+            }
         }
 
         private CircuitFormat parseFormat() {
@@ -228,7 +242,7 @@ public final class StatecraftCli implements Callable<Integer> {
                 if (seed != null) {
                     instruction = instruction.withSeed(seed);
                 }
-                request = request.withMeasurement(instruction);
+                request = request.withMeasurement(instruction, !omitFinalState);
             }
             return request;
         }
@@ -436,12 +450,27 @@ public final class StatecraftCli implements Callable<Integer> {
                         String bits = toMeasuredBitString(entry.getKey(), histogram.measuredQubits());
                         out.println("  " + bits + " : " + entry.getValue());
                     });
+        } else if (measurement instanceof MeasurementResult.BitstringHistogram histogram) {
+            out.println("Shot histogram (qubits " + qubitLabel + "):");
+            histogram.counts().entrySet().stream()
+                    .sorted(java.util.Map.Entry.comparingByKey())
+                    .forEach(entry -> out.println("  " + entry.getKey() + " : " + entry.getValue()));
         } else if (measurement instanceof MeasurementResult.Samples samplesResult) {
             out.println("Shot samples (qubits " + qubitLabel + "):");
             int limit = Math.min(samplesResult.shots(), 32);
             for (int index = 0; index < limit; index++) {
                 String bits = toMeasuredBitString(samplesResult.outcomes().get(index), samplesResult.measuredQubits());
                 out.println("  " + bits);
+            }
+            int remaining = samplesResult.shots() - limit;
+            if (remaining > 0) {
+                out.println("  ... (" + remaining + " more)");
+            }
+        } else if (measurement instanceof MeasurementResult.BitstringSamples samplesResult) {
+            out.println("Shot samples (qubits " + qubitLabel + "):");
+            int limit = Math.min(samplesResult.shots(), 32);
+            for (int index = 0; index < limit; index++) {
+                out.println("  " + samplesResult.outcomes().get(index));
             }
             int remaining = samplesResult.shots() - limit;
             if (remaining > 0) {

@@ -46,6 +46,24 @@ class SingleQubitGateTest {
         assertComplexEquals(new ComplexNumber(-invSqrt2, 0.0), gate.element(1, 1));
     }
 
+    @Test
+    void sGateAddsPositiveImaginaryPhase() {
+        SingleQubitGate gate = new SGate();
+        assertComplexEquals(ComplexNumber.one(), gate.element(0, 0));
+        assertComplexEquals(ComplexNumber.zero(), gate.element(0, 1));
+        assertComplexEquals(ComplexNumber.zero(), gate.element(1, 0));
+        assertComplexEquals(new ComplexNumber(0.0, 1.0), gate.element(1, 1));
+    }
+
+    @Test
+    void sdgGateAddsNegativeImaginaryPhase() {
+        SingleQubitGate gate = new SdgGate();
+        assertComplexEquals(ComplexNumber.one(), gate.element(0, 0));
+        assertComplexEquals(ComplexNumber.zero(), gate.element(0, 1));
+        assertComplexEquals(ComplexNumber.zero(), gate.element(1, 0));
+        assertComplexEquals(new ComplexNumber(0.0, -1.0), gate.element(1, 1));
+    }
+
     private void assertComplexEquals(ComplexNumber expected, ComplexNumber actual) {
         assertEquals(expected.real(), actual.real(), EPS, "real parts differ");
         assertEquals(expected.imag(), actual.imag(), EPS, "imag parts differ");

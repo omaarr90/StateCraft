@@ -1,5 +1,6 @@
 package com.omaarr90.statecraft.engines.stabilizer;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -16,7 +17,11 @@ import com.omaarr90.statecraft.engines.statevector.StatevectorEngine;
 import com.omaarr90.statecraft.quantum.CnotGate;
 import com.omaarr90.statecraft.quantum.Hadamard;
 import com.omaarr90.statecraft.quantum.PauliX;
+import com.omaarr90.statecraft.quantum.PauliY;
+import com.omaarr90.statecraft.quantum.PauliZ;
 import com.omaarr90.statecraft.quantum.QuantumCircuit;
+import com.omaarr90.statecraft.quantum.SGate;
+import com.omaarr90.statecraft.quantum.SdgGate;
 import com.omaarr90.statecraft.quantum.StateVector;
 import java.util.List;
 import java.util.Map;
@@ -46,11 +51,30 @@ class StabilizerEngineTest {
     void cliffordCircuitMatchesStatevectorResult() {
         QuantumCircuit circuit = new QuantumCircuit(3)
                 .append(new Hadamard(), 0)
+                .append(new SGate(), 1)
                 .append(CnotGate.of(), 0, 1)
-                .append(new PauliX(), 2)
-                .appendSwap(1, 2)
-                .appendMultiControl(new PauliX(), 0, 2);
+                .appendMultiControl(new PauliY(), 2, 1)
+                .append(new SdgGate(), 2)
+                .appendSwap(0, 2)
+                .appendControlledZ(2, 1);
         SimulationRequest request = SimulationRequest.zeroState(circuit);
+
+        SimulationResult stabilizerResult = new StabilizerEngine().simulate(request);
+        SimulationResult statevectorResult = new StatevectorEngine().simulate(request);
+
+        assertStateEquals(
+                statevectorResult.finalState().orElseThrow(),
+                stabilizerResult.finalState().orElseThrow());
+    }
+
+    @Test
+    void basisStateInitializationMatchesStatevector() {
+        QuantumCircuit circuit = new QuantumCircuit(3)
+                .append(new SGate(), 0)
+                .append(new Hadamard(), 1)
+                .append(CnotGate.of(), 1, 2)
+                .append(new SdgGate(), 2);
+        SimulationRequest request = SimulationRequest.zeroState(circuit).withBasisState(0, 2);
 
         SimulationResult stabilizerResult = new StabilizerEngine().simulate(request);
         SimulationResult statevectorResult = new StatevectorEngine().simulate(request);
@@ -77,6 +101,38 @@ class StabilizerEngineTest {
         assertEquals(2_000, counts.values().stream().mapToInt(Integer::intValue).sum());
         assertTrue(counts.getOrDefault(0, 0) > 0);
         assertTrue(counts.getOrDefault(3, 0) > 0);
+    }
+
+    @Test
+    void measurementTargetsDefaultToCircuitSuffix() {
+        QuantumCircuit circuit = new QuantumCircuit(3)
+                .append(new PauliX(), 2)
+                .measure(0, 2);
+        SimulationRequest request = SimulationRequest.zeroState(circuit)
+                .withMeasurement(MeasurementInstruction.countsAll(32).withSeed(2L), false);
+
+        MeasurementResult.Histogram histogram = (MeasurementResult.Histogram) new StabilizerEngine()
+                .simulate(request)
+                .measurement()
+                .orElseThrow();
+
+        assertArrayEquals(new int[] {0, 2}, histogram.measuredQubits());
+        assertEquals(Map.of(0b10, 32), histogram.counts());
+    }
+
+    @Test
+    void largeMeasurementOnlyRequestsReturnBitstringResults() {
+        QuantumCircuit circuit = new QuantumCircuit(40);
+        SimulationRequest request = SimulationRequest.zeroState(circuit)
+                .withMeasurement(MeasurementInstruction.countsAll(8).withSeed(11L), false);
+
+        MeasurementResult.BitstringHistogram histogram = (MeasurementResult.BitstringHistogram) new StabilizerEngine()
+                .simulate(request)
+                .measurement()
+                .orElseThrow();
+
+        assertEquals(8, histogram.shots());
+        assertEquals(Map.of("0000000000000000000000000000000000000000", 8), histogram.counts());
     }
 
     @Test
@@ -115,6 +171,15 @@ class StabilizerEngineTest {
     }
 
     @Test
+    void rejectsMultiControlWithMoreThanOneControl() {
+        QuantumCircuit circuit = new QuantumCircuit(3)
+                .appendMultiControl(new PauliX(), 2, 0, 1);
+        SimulationRequest request = SimulationRequest.zeroState(circuit);
+
+        assertThrows(UnsupportedOperationException.class, () -> new StabilizerEngine().simulate(request));
+    }
+
+    @Test
     void rejectsArbitraryTwoQubitUnitary() {
         ComplexNumber[] identity = new ComplexNumber[] {
                 ComplexNumber.one(), ComplexNumber.zero(), ComplexNumber.zero(), ComplexNumber.zero(),
@@ -135,6 +200,25 @@ class StabilizerEngineTest {
                 .afterAllGates(ErrorChannel.phaseFlip(0.1, 0))
                 .build();
         SimulationRequest request = SimulationRequest.zeroState(circuit).withNoiseModel(noise);
+
+        assertThrows(UnsupportedOperationException.class, () -> new StabilizerEngine().simulate(request));
+    }
+
+    @Test
+    void rejectsNonBasisInitialState() {
+        StateVector initial = StateVector.fromArray(1, new double[] {
+                1.0 / Math.sqrt(2.0), 0.0,
+                1.0 / Math.sqrt(2.0), 0.0
+        });
+        SimulationRequest request = SimulationRequest.withInitialState(new QuantumCircuit(1), initial);
+
+        assertThrows(UnsupportedOperationException.class, () -> new StabilizerEngine().simulate(request));
+    }
+
+    @Test
+    void rejectsLargeFinalStateRequests() {
+        QuantumCircuit circuit = new QuantumCircuit(StabilizerEngine.MAX_FINAL_STATE_QUBITS + 1);
+        SimulationRequest request = SimulationRequest.zeroState(circuit);
 
         assertThrows(UnsupportedOperationException.class, () -> new StabilizerEngine().simulate(request));
     }

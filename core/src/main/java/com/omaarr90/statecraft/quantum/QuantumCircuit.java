@@ -85,7 +85,7 @@ public record QuantumCircuit(int qubitCount, List<QuantumCircuit.Operation> oper
 
     public QuantumCircuit appendMultiControl(SingleQubitGate gate, int targetQubit, int... controlQubits) {
         Operation.MultiControlOperation operation = new Operation.MultiControlOperation(
-                Objects.requireNonNull(gate, "gate"), targetQubit, copyControls(controlQubits), 0);
+                Objects.requireNonNull(gate, "gate"), targetQubit, copyControls(controlQubits));
         return appendOperation(operation);
     }
 
@@ -319,7 +319,7 @@ public record QuantumCircuit(int qubitCount, List<QuantumCircuit.Operation> oper
     private void applyMultiControl(ComplexNumber[] state, Operation.MultiControlOperation operation) {
         int target = operation.targetQubit();
         int targetMask = 1 << target;
-        int controlMask = operation.controlMask();
+        int controlMask = computeControlMask(operation.controlQubits());
         SingleQubitGate gate = operation.gate();
         ComplexNumber g00 = gate.element(0, 0);
         ComplexNumber g01 = gate.element(0, 1);
@@ -337,6 +337,14 @@ public record QuantumCircuit(int qubitCount, List<QuantumCircuit.Operation> oper
                 state[idx1] = new1;
             }
         }
+    }
+
+    private static int computeControlMask(int[] controlQubits) {
+        int mask = 0;
+        for (int control : controlQubits) {
+            mask |= 1 << control;
+        }
+        return mask;
     }
 
     private ComplexNumber valueOrZero(ComplexNumber value) {
@@ -487,7 +495,7 @@ public record QuantumCircuit(int qubitCount, List<QuantumCircuit.Operation> oper
             }
         }
 
-        record MultiControlOperation(SingleQubitGate gate, int targetQubit, int[] controlQubits, int controlMask)
+        record MultiControlOperation(SingleQubitGate gate, int targetQubit, int[] controlQubits)
                 implements Operation {
 
             public MultiControlOperation {
@@ -501,7 +509,6 @@ public record QuantumCircuit(int qubitCount, List<QuantumCircuit.Operation> oper
                 if (controlQubits.length == 0) {
                     throw new IllegalArgumentException("at least one control qubit is required");
                 }
-                int mask = 0;
                 for (int control : controlQubits) {
                     if (control < 0) {
                         throw new IllegalArgumentException("control qubit index must be non-negative");
@@ -509,12 +516,12 @@ public record QuantumCircuit(int qubitCount, List<QuantumCircuit.Operation> oper
                     if (control == targetQubit) {
                         throw new IllegalArgumentException("control and target qubits must differ");
                     }
-                    if ((mask & (1 << control)) != 0) {
-                        throw new IllegalArgumentException("duplicate control qubit: " + control);
-                    }
-                    mask |= 1 << control;
                 }
-                controlMask = mask;
+                for (int index = 1; index < controlQubits.length; index++) {
+                    if (controlQubits[index] == controlQubits[index - 1]) {
+                        throw new IllegalArgumentException("duplicate control qubit: " + controlQubits[index]);
+                    }
+                }
             }
 
             @Override
@@ -527,6 +534,11 @@ public record QuantumCircuit(int qubitCount, List<QuantumCircuit.Operation> oper
                         throw new IllegalArgumentException("control qubit out of range: " + control);
                     }
                 }
+            }
+
+            @Override
+            public int[] controlQubits() {
+                return controlQubits.clone();
             }
         }
 

@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 
 import com.omaarr90.statecraft.core.noise.ErrorChannel;
 import com.omaarr90.statecraft.core.noise.NoiseModel;
@@ -83,5 +84,30 @@ class SimulationRequestTest {
         assertEquals(model, request.noiseModel().orElseThrow());
         assertTrue(request.noiseSeed().isPresent());
         assertEquals(42L, request.noiseSeed().getAsLong());
+    }
+
+    @Test
+    void basisStateQubitsAreStoredAndNormalized() {
+        QuantumCircuit circuit = new QuantumCircuit(4);
+        SimulationRequest request = SimulationRequest.zeroState(circuit).withBasisState(3, 1);
+
+        assertTrue(request.initialState().isEmpty());
+        assertArrayEquals(new int[] {1, 3}, request.basisStateQubits().orElseThrow());
+    }
+
+    @Test
+    void initialStateAndBasisStateAreMutuallyExclusive() {
+        QuantumCircuit circuit = new QuantumCircuit(2);
+        StateVector state = StateVector.zero(2);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> new SimulationRequest(
+                        circuit,
+                        java.util.Optional.of(state),
+                        java.util.Optional.of(new int[] {1}),
+                        java.util.Optional.empty(),
+                        java.util.Optional.empty(),
+                        java.util.OptionalLong.empty(),
+                        true));
     }
 }

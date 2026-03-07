@@ -5,7 +5,7 @@ This document captures the current implementation status of the StateCraft quant
 ## Repository Structure
 
 - `core/`: Core library providing math primitives and quantum circuit logic.
-- `engines/`: Placeholder module for future simulator engines that will implement the shared service interface.
+- `engines/`: Simulator backends implementing the shared service interface (statevector, stabilizer, tensor-network).
 - `app/`: Command-line interface packaged with GraalVM native-image support.
 - `docs/`: Architecture decisions, planning deliverables, and this progress report.
 
@@ -40,6 +40,7 @@ This document captures the current implementation status of the StateCraft quant
 
 - `SimulatorEngine` interface defines the contract (`id()` plus `simulate`) that concrete simulation back-ends implement and expose via `ServiceLoader`.
 - `StatevectorEngine` (in `engines` module) now drives SIMD-accelerated kernels directly over the canonical AoS `[re, im]` buffer, eliminating the legacy real/imag split staging arrays. The refactor tightened `StatevectorKernels` signatures around a single `double[]` and added vector-friendly shuffle helpers so gather/scatter stays localized.
+- `TensorNetworkEngine` is implemented as an MPS backend for shallow larger circuits (up to 50 qubits, depth <= 40) with seeded shot sampling and bounded bond-dimension truncation.
 - A manual microbenchmark (`StatevectorKernelMicrobenchmark` under `engines/src/test/java`) contrasts the AoS kernels with a split-buffer reference to track throughput deltas. Run it with `java --enable-preview --add-modules jdk.incubator.vector -cp engines/build/classes/java/main:engines/build/classes/java/test com.omaarr90.statecraft.engines.statevector.StatevectorKernelMicrobenchmark`.
 - Running tests or the CLI with this engine still requires `--enable-preview --add-modules jdk.incubator.vector`.
 
@@ -89,7 +90,7 @@ SimulationResult result = engine.simulate(request);
 
 ## Current Gaps and Next Steps
 
-- Statevector engine covers single- and two-qubit primitives plus multi-control gates; alternative back-ends are still pending.
+- Tensor-network v1 intentionally excludes noisy simulation, arbitrary two-qubit unitary matrices, and multi-control gates.
 - OpenQASM support is deliberately limited to a small subset; expand grammar coverage and gate support as formats mature.
 - Additional documentation will be needed as engines and parsers are introduced.
 
