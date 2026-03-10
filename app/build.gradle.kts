@@ -21,6 +21,7 @@ repositories {
 dependencies {
     implementation(project(":core"))
     implementation(project(":engines"))
+    annotationProcessor(libs.picocli.codegen)
 
     // Use JUnit Jupiter for testing.
     testImplementation(libs.junit.jupiter)
@@ -45,7 +46,12 @@ tasks.named<Test>("test") {
 }
 
 tasks.withType<JavaCompile>().configureEach {
-    options.compilerArgs.addAll(listOf("--enable-preview", "--add-modules", "jdk.incubator.vector"))
+    options.compilerArgs.addAll(
+            listOf(
+                    "--enable-preview",
+                    "--add-modules",
+                    "jdk.incubator.vector",
+                    "-Aproject=${project.group}/${project.name}"))
 }
 
 graalvmNative {
