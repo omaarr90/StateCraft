@@ -86,5 +86,20 @@
 .\gradlew.bat :engines:compileTestJava --console=plain
 java --enable-preview --add-modules jdk.incubator.vector --class-path "engines\build\classes\java\main;engines\build\classes\java\test;core\build\classes\java\main" com.omaarr90.statecraft.engines.statevector.StatevectorKernelMicrobenchmark
 .\gradlew.bat test --console=plain
+.\gradlew.bat clean :app:nativeCompile --console=plain
+.\app\build\native\nativeCompile\statecraft.exe demo
+.\app\build\native\nativeCompile\statecraft.exe suite
+$bellJson = Join-Path $env:TEMP "statecraft-bell.json"
+@'
+{
+  "qubits": 2,
+  "operations": [
+    { "gate": "h", "target": 0 },
+    { "gate": "cx", "control": 0, "target": 1 },
+    { "gate": "measure", "qubits": [0, 1] }
+  ]
+}
+'@ | Set-Content -Encoding Ascii $bellJson
+.\app\build\native\nativeCompile\statecraft.exe run --input $bellJson --shots 32
 ```
 

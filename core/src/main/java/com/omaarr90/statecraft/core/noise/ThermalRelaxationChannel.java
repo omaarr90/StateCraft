@@ -5,18 +5,12 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Thermal relaxation channel combining T₁ energy relaxation and T₂ dephasing.
+ * Thermal relaxation channel combining T1 energy relaxation and T2 dephasing.
  * <p>
- * Models realistic qubit decoherence by combining amplitude damping (T₁)
- * and pure dephasing. The effective noise depends on the gate time.
+ * Models realistic qubit decoherence with a CPTP single-qubit Kraus decomposition
+ * parameterized by gate time.
  * <p>
- * The channel is constructed from:
- * <ul>
- *   <li>Amplitude damping with γ = 1 - exp(-gate_time / T₁)</li>
- *   <li>Phase damping with λ = (1 - exp(-gate_time / T₂)) - γ/2</li>
- * </ul>
- * <p>
- * Constraint: T₂ ≤ 2·T₁ (physically required for positive rate)
+ * Constraint: T2 <= 2*T1 (physically required for positive rate)
  */
 final class ThermalRelaxationChannel implements ErrorChannel {
 
@@ -35,7 +29,7 @@ final class ThermalRelaxationChannel implements ErrorChannel {
         }
         if (t2 > 2.0 * t1) {
             throw new IllegalArgumentException(
-                    "T2 must satisfy T2 ≤ 2·T1 (physical constraint), got T1=" + t1 + ", T2=" + t2);
+                    "T2 must satisfy T2 <= 2*T1 (physical constraint), got T1=" + t1 + ", T2=" + t2);
         }
         if (gateTime < 0.0 || !Double.isFinite(gateTime)) {
             throw new IllegalArgumentException("gate time must be non-negative and finite, got "
@@ -64,65 +58,75 @@ final class ThermalRelaxationChannel implements ErrorChannel {
     }
 
     private KrausDecomposition buildKrausDecomposition() {
-        // Compute decay probabilities
-        // p_a = 1 - exp(-t/T1): amplitude damping probability
-        double pa = 1.0 - Math.exp(-gateTime / t1);
-        
-        // Pure dephasing time: 1/T2 = 1/(2*T1) + 1/T_phi
-        // Therefore: T_phi = (T1 * T2) / (2*T1 - T2)
-        double tPhi;
-        if (Math.abs(2.0 * t1 - t2) < 1e-14) {
-            // T2 = 2*T1 exactly, no pure dephasing
-            tPhi = Double.POSITIVE_INFINITY;
-        } else {
-            tPhi = (t1 * t2) / (2.0 * t1 - t2);
+        double a = Math.exp(-gateTime / t1);
+        double b = Math.exp(-gateTime / t2);
+        double sqrtA = Math.sqrt(Math.max(0.0, a));
+        double lambda = sqrtA == 0.0
+                ? 1.0
+                : clampUnit(b / sqrtA);
+
+        double plus = 0.5 * (1.0 + lambda);
+        double minus = 0.5 * (1.0 - lambda);
+
+        double k0Diag0 = Math.sqrt(plus);
+        double k0Diag1 = sqrtA * k0Diag0;
+        ComplexNumber[] k0Matrix = {
+                new ComplexNumber(k0Diag0, 0.0),
+                ComplexNumber.zero(),
+                ComplexNumber.zero(),
+                new ComplexNumber(k0Diag1, 0.0)
+        };
+
+        double k1Diag0 = Math.sqrt(minus);
+        double k1Diag1 = sqrtA * k1Diag0;
+        ComplexNumber[] k1Matrix = {
+                new ComplexNumber(k1Diag0, 0.0),
+                ComplexNumber.zero(),
+                ComplexNumber.zero(),
+                new ComplexNumber(-k1Diag1, 0.0)
+        };
+
+        double k2OffDiag = Math.sqrt(Math.max(0.0, 1.0 - a));
+        ComplexNumber[] k2Matrix = {
+                ComplexNumber.zero(),
+                new ComplexNumber(k2OffDiag, 0.0),
+                ComplexNumber.zero(),
+                ComplexNumber.zero()
+        };
+
+        double w0 = traceWeight(k0Matrix);
+        double w1 = traceWeight(k1Matrix);
+        double w2 = traceWeight(k2Matrix);
+        double sum = w0 + w1 + w2;
+        if (!Double.isFinite(sum) || sum <= 0.0) {
+            throw new IllegalStateException("invalid thermal-relaxation Kraus weights: " + sum);
         }
-        
-        // p_p = 1 - exp(-t/T_phi): pure phase damping probability
-        double pp = tPhi == Double.POSITIVE_INFINITY ? 0.0 : (1.0 - Math.exp(-gateTime / tPhi));
-        
-        // Ensure non-negative due to numerical precision
-        pp = Math.max(0.0, pp);
 
-        // Monte Carlo probabilities for sampling
-        // These are the trace values Tr(K_i† K_i)
-        double p0 = (1.0 - pa) * (1.0 - pp);  // no error
-        double p1 = pa;                        // amplitude damping
-        double p2 = (1.0 - pa) * pp;          // pure dephasing
-
-        // Kraus operator coefficients (square roots of probabilities)
-        double c0 = Math.sqrt(p0);
-        double c1 = Math.sqrt(p1);
-        double c2 = Math.sqrt(p2);
-
-        // K₀: no error (scaled identity)
-        // K0 = sqrt(p0) * I
-        KrausOperator k0 = ErrorChannel.singleQubitOperator(
-                p0,
-                new ComplexNumber(c0, 0.0),
-                ComplexNumber.zero(),
-                ComplexNumber.zero(),
-                new ComplexNumber(c0, 0.0));
-
-        // K₁: amplitude damping (|1⟩ → |0⟩)
-        // K1 = [[0, sqrt(pa)], [0, 0]]
-        KrausOperator k1 = ErrorChannel.singleQubitOperator(
-                p1,
-                ComplexNumber.zero(),
-                new ComplexNumber(c1, 0.0),
-                ComplexNumber.zero(),
-                ComplexNumber.zero());
-
-        // K₂: pure dephasing
-        // K2 = sqrt(pp * (1-pa)) * Z = c2 * [[1, 0], [0, -1]]
-        KrausOperator k2 = ErrorChannel.singleQubitOperator(
-                p2,
-                new ComplexNumber(c2, 0.0),
-                ComplexNumber.zero(),
-                ComplexNumber.zero(),
-                new ComplexNumber(-c2, 0.0));
-
+        KrausOperator k0 = new KrausOperator(k0Matrix, w0 / sum);
+        KrausOperator k1 = new KrausOperator(k1Matrix, w1 / sum);
+        KrausOperator k2 = new KrausOperator(k2Matrix, w2 / sum);
         return new KrausDecomposition(List.of(k0, k1, k2), 1);
+    }
+
+    private static double clampUnit(double value) {
+        if (!Double.isFinite(value)) {
+            return value > 0.0 ? 1.0 : 0.0;
+        }
+        if (value < 0.0) {
+            return 0.0;
+        }
+        if (value > 1.0) {
+            return 1.0;
+        }
+        return value;
+    }
+
+    private static double traceWeight(ComplexNumber[] matrix) {
+        double weight = 0.0;
+        for (ComplexNumber element : matrix) {
+            weight += element.magnitudeSquared();
+        }
+        return weight;
     }
 
     @Override

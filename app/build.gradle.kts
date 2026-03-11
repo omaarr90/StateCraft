@@ -60,6 +60,11 @@ graalvmNative {
         named("main") {
             imageName.set("statecraft")
             resources.autodetect()
+            buildArgs.addAll(
+                    listOf(
+                            "--enable-preview",
+                            "--add-modules=jdk.incubator.vector",
+                            "-H:+VectorAPISupport"))
         }
     }
 }

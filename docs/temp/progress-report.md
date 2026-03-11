@@ -20,6 +20,7 @@ Phase 1 established the project foundation: a multi-module Gradle layout, GraalV
 - `NoiseModel.channelsAfter(Operation)` aggregates gate, qubit, and global channels based on the operation's affected qubits.
 - `ErrorChannel` provides factory methods for depolarizing, amplitude damping, phase flip, phase damping, thermal relaxation, and composite channels.
 - `KrausDecomposition` validates operator dimensions and probability normalization and exposes `sampleOperator(SplittableRandom)` for Monte Carlo sampling.
+- Thermal relaxation now uses a CPTP Kraus decomposition derived from `T1`, `T2`, and gate time, with completeness checks covered by unit tests.
 
 ### SimulationRequest integration
 - `SimulationRequest` now carries optional `NoiseModel` and optional `noiseSeed`, alongside the circuit, initial state, and measurement instruction.
@@ -87,12 +88,13 @@ Case 2: X on |0>
 - Deterministic sampling required consistent RNG behavior between engine and tests; resolved by injecting `noiseSeed` and using `SplittableRandom` on both sides.
 - Kraus application changes state norm; a renormalization step was added after each operator to prevent drift.
 - Multi-qubit Kraus operators are not yet supported; explicit exceptions were added to fail fast.
+- Thermal-relaxation completeness drift was resolved by rebuilding the channel with a CPTP-consistent three-operator decomposition and trace-normalized operator weights.
 - Noise application had to respect the measurement suffix constraint; noise is only applied to unitary operations.
 
 ## Current Limitations
 - Only single-qubit Kraus operators are supported.
 - Idle-time noise is not modeled.
-- Noise configuration is API-only; the CLI does not expose it.
+- CLI noise configuration currently targets global channels; gate-specific and per-qubit schedule design remains primarily API-driven.
 - One noise trajectory is sampled per simulation; no trajectory averaging is provided yet.
 
 ## Next Steps 

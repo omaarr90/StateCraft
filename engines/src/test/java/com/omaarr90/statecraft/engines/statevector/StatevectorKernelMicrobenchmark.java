@@ -61,7 +61,7 @@ public final class StatevectorKernelMicrobenchmark {
         long start = System.nanoTime();
         for (int iter = 0; iter < iterations; iter++) {
             for (GateSpec gate : gates) {
-                StatevectorKernels.applySingleGate(state, gate.target(),
+                StatevectorOps.applySingleGate(state, gate.target(),
                         gate.g00r(), gate.g00i(),
                         gate.g01r(), gate.g01i(),
                         gate.g10r(), gate.g10i(),

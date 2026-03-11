@@ -5,7 +5,7 @@ import jdk.incubator.vector.VectorMask;
 import jdk.incubator.vector.VectorShuffle;
 import jdk.incubator.vector.VectorSpecies;
 
-final class StatevectorKernels {
+public final class StatevectorOps {
 
     private static final VectorSpecies<Double> SPECIES = DoubleVector.SPECIES_PREFERRED;
     private static final int COMPLEX_PER_VECTOR = SPECIES.length() >= 2 ? SPECIES.length() >> 1 : 0;
@@ -17,10 +17,10 @@ final class StatevectorKernels {
             ? buildSignVector()
             : null;
 
-    private StatevectorKernels() {
+    private StatevectorOps() {
     }
 
-    static void applySingleGate(double[] state, int target,
+    public static void applySingleGate(double[] state, int target,
             double g00r, double g00i,
             double g01r, double g01i,
             double g10r, double g10i,
@@ -92,7 +92,7 @@ final class StatevectorKernels {
         }
     }
 
-    static void applyCnot(double[] state, int control, int target) {
+    public static void applyCnot(double[] state, int control, int target) {
         int controlMask = 1 << control;
         int targetMask = 1 << target;
         int dimension = state.length >> 1;
@@ -111,7 +111,7 @@ final class StatevectorKernels {
         }
     }
 
-    static void applyTwoQubitUnitary(double[] state, int first, int second,
+    public static void applyTwoQubitUnitary(double[] state, int first, int second,
             double[] matrixReal, double[] matrixImag) {
         int low = Math.min(first, second);
         int high = Math.max(first, second);
@@ -349,7 +349,7 @@ final class StatevectorKernels {
         }
     }
 
-    static void applyTwoQubitDiagonal(double[] state, int first, int second,
+    public static void applyTwoQubitDiagonal(double[] state, int first, int second,
             double[] diagonalReal, double[] diagonalImag) {
         int low = Math.min(first, second);
         int high = Math.max(first, second);
@@ -462,7 +462,7 @@ final class StatevectorKernels {
         }
     }
 
-    static void applySwap(double[] state, int first, int second) {
+    public static void applySwap(double[] state, int first, int second) {
         int low = Math.min(first, second);
         int high = Math.max(first, second);
         boolean firstIsLow = first == low;
@@ -517,7 +517,7 @@ final class StatevectorKernels {
         }
     }
 
-    static void applyMultiControlledSingleGate(double[] state, int target,
+    public static void applyMultiControlledSingleGate(double[] state, int target,
             int controlMask,
             double g00r, double g00i,
             double g01r, double g01i,

@@ -82,7 +82,7 @@ public final class StatevectorEngine implements SimulatorEngine {
                     throw new UnsupportedOperationException(
                             "Unitary operations cannot follow measurement operations in the circuit");
                 }
-                StatevectorKernels.applyCnot(state, cnot.controlQubit(), cnot.targetQubit());
+                StatevectorOps.applyCnot(state, cnot.controlQubit(), cnot.targetQubit());
                 if (applyNoise) {
                     applyNoiseAfterOperation(state, operation, noiseModel, noiseRng, qubitCount);
                 }
@@ -109,7 +109,7 @@ public final class StatevectorEngine implements SimulatorEngine {
                     throw new UnsupportedOperationException(
                             "Unitary operations cannot follow measurement operations in the circuit");
                 }
-                StatevectorKernels.applySwap(state, swap.firstQubit(), swap.secondQubit());
+                StatevectorOps.applySwap(state, swap.firstQubit(), swap.secondQubit());
                 if (applyNoise) {
                     applyNoiseAfterOperation(state, operation, noiseModel, noiseRng, qubitCount);
                 }
@@ -164,7 +164,7 @@ public final class StatevectorEngine implements SimulatorEngine {
         double g10i = gate.element(1, 0).imag();
         double g11r = gate.element(1, 1).real();
         double g11i = gate.element(1, 1).imag();
-        StatevectorKernels.applySingleGate(state, single.qubit(),
+        StatevectorOps.applySingleGate(state, single.qubit(),
                 g00r, g00i, g01r, g01i, g10r, g10i, g11r, g11i);
     }
 
@@ -178,7 +178,7 @@ public final class StatevectorEngine implements SimulatorEngine {
             matrixReal[index] = element.real();
             matrixImag[index] = element.imag();
         }
-        StatevectorKernels.applyTwoQubitUnitary(state,
+        StatevectorOps.applyTwoQubitUnitary(state,
                 operation.firstQubit(), operation.secondQubit(), matrixReal, matrixImag);
     }
 
@@ -192,7 +192,7 @@ public final class StatevectorEngine implements SimulatorEngine {
             diagonalReal[index] = element.real();
             diagonalImag[index] = element.imag();
         }
-        StatevectorKernels.applyTwoQubitDiagonal(state,
+        StatevectorOps.applyTwoQubitDiagonal(state,
                 operation.firstQubit(), operation.secondQubit(), diagonalReal, diagonalImag);
     }
 
@@ -207,7 +207,7 @@ public final class StatevectorEngine implements SimulatorEngine {
         double g10i = gate.element(1, 0).imag();
         double g11r = gate.element(1, 1).real();
         double g11i = gate.element(1, 1).imag();
-        StatevectorKernels.applyMultiControlledSingleGate(state, operation.targetQubit(),
+        StatevectorOps.applyMultiControlledSingleGate(state, operation.targetQubit(),
                 computeControlMask(operation.controlQubits()),
                 g00r, g00i, g01r, g01i, g10r, g10i, g11r, g11i);
     }
@@ -429,7 +429,7 @@ public final class StatevectorEngine implements SimulatorEngine {
         ComplexNumber m01 = matrix[1];
         ComplexNumber m10 = matrix[2];
         ComplexNumber m11 = matrix[3];
-        StatevectorKernels.applySingleGate(state, target,
+        StatevectorOps.applySingleGate(state, target,
                 m00.real(), m00.imag(),
                 m01.real(), m01.imag(),
                 m10.real(), m10.imag(),
