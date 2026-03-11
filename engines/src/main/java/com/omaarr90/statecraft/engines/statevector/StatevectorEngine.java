@@ -32,6 +32,7 @@ import java.util.SplittableRandom;
 public final class StatevectorEngine implements SimulatorEngine {
 
     public static final String ID = "statevector";
+    private static final int MAX_QUBITS = 29;
 
     @Override
     public String id() {
@@ -43,6 +44,7 @@ public final class StatevectorEngine implements SimulatorEngine {
         Objects.requireNonNull(request, "request");
         QuantumCircuit circuit = request.circuit();
         int qubitCount = circuit.qubitCount();
+        ensureSupportedQubitCount(qubitCount);
         int dimension = 1 << qubitCount;
         double[] state = new double[dimension << 1];
 
@@ -142,6 +144,14 @@ public final class StatevectorEngine implements SimulatorEngine {
         }
         return SimulationResult.forMeasurement(measurement.orElseThrow(() ->
                 new IllegalStateException("measurement instruction required when final state is omitted")));
+    }
+
+    private static void ensureSupportedQubitCount(int qubitCount) {
+        if (qubitCount > MAX_QUBITS) {
+            throw new UnsupportedOperationException(
+                    "statevector engine supports up to "
+                            + MAX_QUBITS + " qubits in dense mode, got " + qubitCount);
+        }
     }
 
     private void applySingle(double[] state, QuantumCircuit.Operation.SingleGateOperation single) {

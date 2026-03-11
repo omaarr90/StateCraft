@@ -371,6 +371,18 @@ class StatevectorEngineTest {
         assertNormalized(state);
     }
 
+    @Test
+    void rejectsQubitCountAboveDenseLimit() {
+        QuantumCircuit circuit = new QuantumCircuit(30);
+        SimulationRequest request = SimulationRequest.zeroState(circuit);
+
+        StatevectorEngine engine = new StatevectorEngine();
+        UnsupportedOperationException exception =
+                assertThrows(UnsupportedOperationException.class, () -> engine.simulate(request));
+
+        assertTrue(exception.getMessage().contains("supports up to 29 qubits"));
+    }
+
     private void assertSimulationMatchesCircuit(QuantumCircuit circuit) {
         StatevectorEngine engine = new StatevectorEngine();
         SimulationResult result = engine.simulate(SimulationRequest.zeroState(circuit));

@@ -1,10 +1,17 @@
 name: CI
-# Temporarily disabled until GitHub Actions supports GraalVM 25.
 on:
+  push:
+    branches:
+      - main
+      - release/**
+  pull_request:
+    branches:
+      - main
+      - release/**
   workflow_dispatch:
     inputs:
       reason:
-        description: "Manual trigger while waiting for GraalVM 25 support"
+        description: "Optional reason for a manual CI run"
         required: false
 jobs:
   build:
@@ -27,4 +34,4 @@ jobs:
           java-version: 25
           components: "native-image"
       - uses: gradle/gradle-build-action@v3
-      - run: ./gradlew :cli:nativeCompile --stacktrace
+      - run: ./gradlew :app:nativeCompile --stacktrace

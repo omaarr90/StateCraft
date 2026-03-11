@@ -22,6 +22,7 @@ import java.util.concurrent.Callable;
 import java.nio.file.Path;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
+import picocli.CommandLine.Mixin;
 import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Spec;
@@ -82,6 +83,9 @@ public final class StatecraftCli implements Callable<Integer> {
         @Spec
         private CommandSpec spec;
 
+        @Mixin
+        private NoiseOptions noiseOptions = new NoiseOptions();
+
         @Option(names = "--shots", description = "Number of measurement shots to sample", defaultValue = "0")
         private int shots;
 
@@ -97,11 +101,12 @@ public final class StatecraftCli implements Callable<Integer> {
         @Override
         public Integer call() {
             validateOptions();
+            NoiseOptionsSupport.ResolvedNoiseSpec noiseSpec = noiseOptions.resolve(spec.commandLine());
 
             QuantumCircuit circuit = new QuantumCircuit(2)
                     .append(new Hadamard(), 0)
                     .append(CnotGate.of(), 0, 1);
-            SimulationResult result = simulate(circuit);
+            SimulationResult result = simulate(circuit, noiseSpec);
             var out = spec.commandLine().getOut();
             result.finalState().ifPresentOrElse(
                     state -> {
@@ -134,7 +139,7 @@ public final class StatecraftCli implements Callable<Integer> {
             }
         }
 
-        private SimulationResult simulate(QuantumCircuit circuit) {
+        private SimulationResult simulate(QuantumCircuit circuit, NoiseOptionsSupport.ResolvedNoiseSpec noiseSpec) {
             SimulatorEngine engine = loadStatevectorEngine();
             SimulationRequest request = SimulationRequest.zeroState(circuit);
             if (shots > 0) {
@@ -146,6 +151,7 @@ public final class StatecraftCli implements Callable<Integer> {
                 }
                 request = request.withMeasurement(instruction, !omitFinalState);
             }
+            request = noiseSpec.applyTo(request);
             return engine.simulate(request);
         }
     }
@@ -154,6 +160,9 @@ public final class StatecraftCli implements Callable<Integer> {
     static final class Run implements Callable<Integer> {
         @Spec
         private CommandSpec spec;
+
+        @Mixin
+        private NoiseOptions noiseOptions = new NoiseOptions();
 
         @Option(names = "--input", required = true, description = "Path to the circuit file")
         private Path input;
@@ -179,10 +188,11 @@ public final class StatecraftCli implements Callable<Integer> {
         @Override
         public Integer call() {
             validateOptions();
+            NoiseOptionsSupport.ResolvedNoiseSpec noiseSpec = noiseOptions.resolve(spec.commandLine());
             CircuitFormat selectedFormat = parseFormat();
             QuantumCircuit circuit = parseCircuit(selectedFormat);
             SimulatorEngine engine = loadEngine(engineId);
-            SimulationResult result = engine.simulate(buildRequest(circuit));
+            SimulationResult result = engine.simulate(buildRequest(circuit, noiseSpec));
 
             PrintWriter out = spec.commandLine().getOut();
             out.println("Running circuit from " + input.toAbsolutePath());
@@ -233,7 +243,9 @@ public final class StatecraftCli implements Callable<Integer> {
             }
         }
 
-        private SimulationRequest buildRequest(QuantumCircuit circuit) {
+        private SimulationRequest buildRequest(
+                QuantumCircuit circuit,
+                NoiseOptionsSupport.ResolvedNoiseSpec noiseSpec) {
             SimulationRequest request = SimulationRequest.zeroState(circuit);
             if (shots > 0) {
                 MeasurementInstruction instruction = samples
@@ -244,7 +256,7 @@ public final class StatecraftCli implements Callable<Integer> {
                 }
                 request = request.withMeasurement(instruction, !omitFinalState);
             }
-            return request;
+            return noiseSpec.applyTo(request);
         }
 
         private SimulatorEngine loadEngine(String id) {
@@ -285,8 +297,12 @@ public final class StatecraftCli implements Callable<Integer> {
         @Spec
         private CommandSpec spec;
 
+        @Mixin
+        private NoiseOptions noiseOptions = new NoiseOptions();
+
         @Override
         public Integer call() {
+            NoiseOptionsSupport.ResolvedNoiseSpec noiseSpec = noiseOptions.resolve(spec.commandLine());
             PrintWriter out = spec.commandLine().getOut();
             SimulatorEngine engine = loadStatevectorEngine();
             List<AlgorithmSpec> algorithms = List.of(
@@ -297,13 +313,17 @@ public final class StatecraftCli implements Callable<Integer> {
             out.println(VERSION + " - executing " + algorithms.size()
                     + " algorithms using engine '" + engine.id() + "'");
             for (AlgorithmSpec algorithm : algorithms) {
-                runAlgorithm(out, engine, algorithm);
+                runAlgorithm(out, engine, algorithm, noiseSpec);
             }
             out.flush();
             return CommandLine.ExitCode.OK;
         }
 
-        private void runAlgorithm(PrintWriter out, SimulatorEngine engine, AlgorithmSpec algorithm) {
+        private void runAlgorithm(
+                PrintWriter out,
+                SimulatorEngine engine,
+                AlgorithmSpec algorithm,
+                NoiseOptionsSupport.ResolvedNoiseSpec noiseSpec) {
             out.println();
             out.println("=== " + algorithm.name() + " ===");
             out.println("Description : " + algorithm.description());
@@ -312,7 +332,7 @@ public final class StatecraftCli implements Callable<Integer> {
             out.println("Operations  :");
             printOperations(out, algorithm.circuit());
 
-            SimulationResult result = engine.simulate(algorithm.request());
+            SimulationResult result = engine.simulate(noiseSpec.applyTo(algorithm.request()));
             result.finalState().ifPresent(state -> {
                 out.println("Final state amplitudes (non-zero shown):");
                 printState(out, state, algorithm.circuit().qubitCount());
@@ -410,6 +430,49 @@ public final class StatecraftCli implements Callable<Integer> {
                 String description,
                 QuantumCircuit circuit,
                 SimulationRequest request) {
+        }
+    }
+
+    static final class NoiseOptions {
+        @Option(names = "--noise-config", description = "Path to a JSON noise configuration file")
+        private Path noiseConfig;
+
+        @Option(names = "--noise-seed", description = "Seed for noise sampling (requires at least one noise channel)")
+        private Long noiseSeed;
+
+        @Option(names = "--noise-depolarizing", description = "Global depolarizing probability in [0,1]")
+        private Double noiseDepolarizing;
+
+        @Option(names = "--noise-amplitude-damping", description = "Global amplitude damping gamma in [0,1]")
+        private Double noiseAmplitudeDamping;
+
+        @Option(names = "--noise-phase-flip", description = "Global phase-flip probability in [0,1]")
+        private Double noisePhaseFlip;
+
+        @Option(names = "--noise-phase-damping", description = "Global phase-damping lambda in [0,1]")
+        private Double noisePhaseDamping;
+
+        @Option(names = "--noise-thermal-t1", description = "Global thermal-relaxation T1 in seconds")
+        private Double noiseThermalT1;
+
+        @Option(names = "--noise-thermal-t2", description = "Global thermal-relaxation T2 in seconds")
+        private Double noiseThermalT2;
+
+        @Option(names = "--noise-thermal-gate-time", description = "Global thermal-relaxation gate time in seconds")
+        private Double noiseThermalGateTime;
+
+        private NoiseOptionsSupport.ResolvedNoiseSpec resolve(CommandLine commandLine) {
+            NoiseOptionsSupport.NoiseOptionsInput input = new NoiseOptionsSupport.NoiseOptionsInput(
+                    noiseConfig,
+                    noiseSeed,
+                    noiseDepolarizing,
+                    noiseAmplitudeDamping,
+                    noisePhaseFlip,
+                    noisePhaseDamping,
+                    noiseThermalT1,
+                    noiseThermalT2,
+                    noiseThermalGateTime);
+            return NoiseOptionsSupport.resolve(input, commandLine);
         }
     }
 

@@ -8,10 +8,10 @@ import java.util.Objects;
  */
 public record StateVector(int qubitCount, double[] data) {
 
+    private static final int MAX_DENSE_QUBITS = 29;
+
     public StateVector {
-        if (qubitCount <= 0) {
-            throw new IllegalArgumentException("qubitCount must be positive");
-        }
+        qubitCount = validateQubitCount(qubitCount);
         Objects.requireNonNull(data, "data");
         int dimension = 1 << qubitCount;
         int expectedLength = dimension << 1;
@@ -23,6 +23,7 @@ public record StateVector(int qubitCount, double[] data) {
     }
 
     public static StateVector zero(int qubitCount) {
+        qubitCount = validateQubitCount(qubitCount);
         int dimension = 1 << qubitCount;
         double[] data = new double[dimension << 1];
         data[0] = 1.0; // |0...0> amplitude
@@ -66,5 +67,16 @@ public record StateVector(int qubitCount, double[] data) {
         if (index < 0 || index >= dimension()) {
             throw new IllegalArgumentException("index out of range: " + index);
         }
+    }
+
+    private static int validateQubitCount(int qubitCount) {
+        if (qubitCount <= 0) {
+            throw new IllegalArgumentException("qubitCount must be positive");
+        }
+        if (qubitCount > MAX_DENSE_QUBITS) {
+            throw new IllegalArgumentException(
+                    "dense statevector supports at most " + MAX_DENSE_QUBITS + " qubits, got " + qubitCount);
+        }
+        return qubitCount;
     }
 }
