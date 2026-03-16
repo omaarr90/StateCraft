@@ -9,14 +9,14 @@ import java.util.Objects;
 
 public interface CircuitParser {
 
-    QuantumCircuit parse(String source);
+	QuantumCircuit parse(String source);
 
-    default QuantumCircuit parse(Path path) {
-        Objects.requireNonNull(path, "path");
-        try {
-            return parse(Files.readString(path, StandardCharsets.UTF_8));
-        } catch (IOException e) {
-            throw new CircuitParseException("Failed to read circuit file: " + path, e);
-        }
-    }
+	default QuantumCircuit parse(Path path) {
+		Objects.requireNonNull(path, "path");
+		try {
+			return parse(Files.readString(path, StandardCharsets.UTF_8));
+		} catch (IOException e) {
+			throw new CircuitParseException("Failed to read circuit file: " + path, e);
+		}
+	}
 }

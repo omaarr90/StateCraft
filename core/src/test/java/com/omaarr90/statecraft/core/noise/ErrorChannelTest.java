@@ -11,316 +11,278 @@ import org.junit.jupiter.api.Test;
 
 class ErrorChannelTest {
 
-    private static final double EPS = 1e-12;
+	private static final double EPS = 1e-12;
 
-    @Test
-    void depolarizingChannelValidatesCompleteness() {
-        ErrorChannel channel = ErrorChannel.depolarizing(0.1, 0);
-        KrausDecomposition decomp = channel.krausDecomposition();
-        decomp.validateCompleteness();
-    }
+	@Test
+	void depolarizingChannelValidatesCompleteness() {
+		ErrorChannel channel = ErrorChannel.depolarizing(0.1, 0);
+		KrausDecomposition decomp = channel.krausDecomposition();
+		decomp.validateCompleteness();
+	}
 
-    @Test
-    void depolarizingChannelRejectsBadProbability() {
-        assertThrows(IllegalArgumentException.class, () -> ErrorChannel.depolarizing(-0.1, 0));
-        assertThrows(IllegalArgumentException.class, () -> ErrorChannel.depolarizing(1.5, 0));
-    }
+	@Test
+	void depolarizingChannelRejectsBadProbability() {
+		assertThrows(IllegalArgumentException.class, () -> ErrorChannel.depolarizing(-0.1, 0));
+		assertThrows(IllegalArgumentException.class, () -> ErrorChannel.depolarizing(1.5, 0));
+	}
 
-    @Test
-    void depolarizingChannelRejectsMultipleQubits() {
-        assertThrows(IllegalArgumentException.class, () -> ErrorChannel.depolarizing(0.1, 0, 1));
-    }
+	@Test
+	void depolarizingChannelRejectsMultipleQubits() {
+		assertThrows(IllegalArgumentException.class, () -> ErrorChannel.depolarizing(0.1, 0, 1));
+	}
 
-    @Test
-    void amplitudeDampingChannelValidatesCompleteness() {
-        ErrorChannel channel = ErrorChannel.amplitudeDamping(0.3, 0);
-        KrausDecomposition decomp = channel.krausDecomposition();
-        decomp.validateCompleteness();
-    }
+	@Test
+	void amplitudeDampingChannelValidatesCompleteness() {
+		ErrorChannel channel = ErrorChannel.amplitudeDamping(0.3, 0);
+		KrausDecomposition decomp = channel.krausDecomposition();
+		decomp.validateCompleteness();
+	}
 
-    @Test
-    void amplitudeDampingChannelRejectsBadGamma() {
-        assertThrows(IllegalArgumentException.class, () -> ErrorChannel.amplitudeDamping(-0.1, 0));
-        assertThrows(IllegalArgumentException.class, () -> ErrorChannel.amplitudeDamping(1.5, 0));
-    }
+	@Test
+	void amplitudeDampingChannelRejectsBadGamma() {
+		assertThrows(IllegalArgumentException.class, () -> ErrorChannel.amplitudeDamping(-0.1, 0));
+		assertThrows(IllegalArgumentException.class, () -> ErrorChannel.amplitudeDamping(1.5, 0));
+	}
 
-    @Test
-    void phaseFlipChannelValidatesCompleteness() {
-        ErrorChannel channel = ErrorChannel.phaseFlip(0.2, 0);
-        KrausDecomposition decomp = channel.krausDecomposition();
-        decomp.validateCompleteness();
-    }
+	@Test
+	void phaseFlipChannelValidatesCompleteness() {
+		ErrorChannel channel = ErrorChannel.phaseFlip(0.2, 0);
+		KrausDecomposition decomp = channel.krausDecomposition();
+		decomp.validateCompleteness();
+	}
 
-    @Test
-    void phaseDampingChannelValidatesCompleteness() {
-        ErrorChannel channel = ErrorChannel.phaseDamping(0.15, 0);
-        KrausDecomposition decomp = channel.krausDecomposition();
-        decomp.validateCompleteness();
-    }
+	@Test
+	void phaseDampingChannelValidatesCompleteness() {
+		ErrorChannel channel = ErrorChannel.phaseDamping(0.15, 0);
+		KrausDecomposition decomp = channel.krausDecomposition();
+		decomp.validateCompleteness();
+	}
 
-    @Test
-    void thermalRelaxationChannelValidatesCompleteness() {
-        double t1 = 50e-6;
-        double t2 = 30e-6;
-        double gateTime = 100e-9;
-        ErrorChannel channel = ErrorChannel.thermalRelaxation(t1, t2, gateTime, 0);
-        KrausDecomposition decomp = channel.krausDecomposition();
-        decomp.validateCompleteness();
-    }
+	@Test
+	void thermalRelaxationChannelValidatesCompleteness() {
+		double t1 = 50e-6;
+		double t2 = 30e-6;
+		double gateTime = 100e-9;
+		ErrorChannel channel = ErrorChannel.thermalRelaxation(t1, t2, gateTime, 0);
+		KrausDecomposition decomp = channel.krausDecomposition();
+		decomp.validateCompleteness();
+	}
 
-    @Test
-    void thermalRelaxationWithZeroGateTimeBehavesAsIdentity() {
-        ErrorChannel channel = ErrorChannel.thermalRelaxation(50e-6, 30e-6, 0.0, 0);
-        KrausDecomposition decomp = channel.krausDecomposition();
-        decomp.validateCompleteness();
+	@Test
+	void thermalRelaxationWithZeroGateTimeBehavesAsIdentity() {
+		ErrorChannel channel = ErrorChannel.thermalRelaxation(50e-6, 30e-6, 0.0, 0);
+		KrausDecomposition decomp = channel.krausDecomposition();
+		decomp.validateCompleteness();
 
-        ComplexNumber[] plusDensity = {
-                new ComplexNumber(0.5, 0.0), new ComplexNumber(0.5, 0.0),
-                new ComplexNumber(0.5, 0.0), new ComplexNumber(0.5, 0.0)
-        };
-        ComplexNumber[] evolved = applyChannel(decomp, plusDensity);
-        assertMatrixEquals(plusDensity, evolved);
-    }
+		ComplexNumber[] plusDensity = {new ComplexNumber(0.5, 0.0), new ComplexNumber(0.5, 0.0),
+				new ComplexNumber(0.5, 0.0), new ComplexNumber(0.5, 0.0)};
+		ComplexNumber[] evolved = applyChannel(decomp, plusDensity);
+		assertMatrixEquals(plusDensity, evolved);
+	}
 
-    @Test
-    void thermalRelaxationWithLargeGateTimeDampsAndDecoheres() {
-        ErrorChannel channel = ErrorChannel.thermalRelaxation(50e-6, 30e-6, 5e-3, 0);
-        KrausDecomposition decomp = channel.krausDecomposition();
-        decomp.validateCompleteness();
+	@Test
+	void thermalRelaxationWithLargeGateTimeDampsAndDecoheres() {
+		ErrorChannel channel = ErrorChannel.thermalRelaxation(50e-6, 30e-6, 5e-3, 0);
+		KrausDecomposition decomp = channel.krausDecomposition();
+		decomp.validateCompleteness();
 
-        ComplexNumber[] oneDensity = {
-                ComplexNumber.zero(), ComplexNumber.zero(),
-                ComplexNumber.zero(), ComplexNumber.one()
-        };
-        ComplexNumber[] evolvedOne = applyChannel(decomp, oneDensity);
-        assertTrue(evolvedOne[0].real() > 1.0 - 1e-8);
-        assertTrue(Math.abs(evolvedOne[3].real()) < 1e-8);
+		ComplexNumber[] oneDensity = {ComplexNumber.zero(), ComplexNumber.zero(), ComplexNumber.zero(),
+				ComplexNumber.one()};
+		ComplexNumber[] evolvedOne = applyChannel(decomp, oneDensity);
+		assertTrue(evolvedOne[0].real() > 1.0 - 1e-8);
+		assertTrue(Math.abs(evolvedOne[3].real()) < 1e-8);
 
-        ComplexNumber[] plusDensity = {
-                new ComplexNumber(0.5, 0.0), new ComplexNumber(0.5, 0.0),
-                new ComplexNumber(0.5, 0.0), new ComplexNumber(0.5, 0.0)
-        };
-        ComplexNumber[] evolvedPlus = applyChannel(decomp, plusDensity);
-        assertTrue(Math.abs(evolvedPlus[1].real()) < 1e-8);
-        assertTrue(Math.abs(evolvedPlus[1].imag()) < 1e-8);
-    }
+		ComplexNumber[] plusDensity = {new ComplexNumber(0.5, 0.0), new ComplexNumber(0.5, 0.0),
+				new ComplexNumber(0.5, 0.0), new ComplexNumber(0.5, 0.0)};
+		ComplexNumber[] evolvedPlus = applyChannel(decomp, plusDensity);
+		assertTrue(Math.abs(evolvedPlus[1].real()) < 1e-8);
+		assertTrue(Math.abs(evolvedPlus[1].imag()) < 1e-8);
+	}
 
-    @Test
-    void thermalRelaxationAssignsNonZeroDecaySamplingWeight() {
-        ErrorChannel channel = ErrorChannel.thermalRelaxation(50e-6, 30e-6, 5e-3, 0);
-        KrausDecomposition decomposition = channel.krausDecomposition();
-        assertTrue(decomposition.operators().get(2).probability() > 0.1);
-    }
+	@Test
+	void thermalRelaxationAssignsNonZeroDecaySamplingWeight() {
+		ErrorChannel channel = ErrorChannel.thermalRelaxation(50e-6, 30e-6, 5e-3, 0);
+		KrausDecomposition decomposition = channel.krausDecomposition();
+		assertTrue(decomposition.operators().get(2).probability() > 0.1);
+	}
 
-    @Test
-    void thermalRelaxationChannelRejectsInvalidT1() {
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> ErrorChannel.thermalRelaxation(-1.0, 1.0, 0.1, 0));
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> ErrorChannel.thermalRelaxation(Double.POSITIVE_INFINITY, 1.0, 0.1, 0));
-    }
+	@Test
+	void thermalRelaxationChannelRejectsInvalidT1() {
+		assertThrows(IllegalArgumentException.class, () -> ErrorChannel.thermalRelaxation(-1.0, 1.0, 0.1, 0));
+		assertThrows(IllegalArgumentException.class,
+				() -> ErrorChannel.thermalRelaxation(Double.POSITIVE_INFINITY, 1.0, 0.1, 0));
+	}
 
-    @Test
-    void thermalRelaxationChannelRejectsInvalidT2() {
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> ErrorChannel.thermalRelaxation(1.0, -1.0, 0.1, 0));
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> ErrorChannel.thermalRelaxation(1.0, 3.0, 0.1, 0));
-    }
+	@Test
+	void thermalRelaxationChannelRejectsInvalidT2() {
+		assertThrows(IllegalArgumentException.class, () -> ErrorChannel.thermalRelaxation(1.0, -1.0, 0.1, 0));
+		assertThrows(IllegalArgumentException.class, () -> ErrorChannel.thermalRelaxation(1.0, 3.0, 0.1, 0));
+	}
 
-    @Test
-    void thermalRelaxationChannelRejectsNegativeGateTime() {
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> ErrorChannel.thermalRelaxation(1.0, 0.5, -0.1, 0));
-    }
+	@Test
+	void thermalRelaxationChannelRejectsNegativeGateTime() {
+		assertThrows(IllegalArgumentException.class, () -> ErrorChannel.thermalRelaxation(1.0, 0.5, -0.1, 0));
+	}
 
-    @Test
-    void krausDecompositionSamplesCorrectly() {
-        ErrorChannel channel = ErrorChannel.depolarizing(0.6, 0);
-        KrausDecomposition decomp = channel.krausDecomposition();
+	@Test
+	void krausDecompositionSamplesCorrectly() {
+		ErrorChannel channel = ErrorChannel.depolarizing(0.6, 0);
+		KrausDecomposition decomp = channel.krausDecomposition();
 
-        int numSamples = 10000;
-        int[] counts = new int[4];
-        SplittableRandom random = new SplittableRandom(42);
+		int numSamples = 10000;
+		int[] counts = new int[4];
+		SplittableRandom random = new SplittableRandom(42);
 
-        for (int i = 0; i < numSamples; i++) {
-            int idx = decomp.sampleOperator(random);
-            counts[idx]++;
-        }
+		for (int i = 0; i < numSamples; i++) {
+			int idx = decomp.sampleOperator(random);
+			counts[idx]++;
+		}
 
-        double[] expectedProbs = {0.4, 0.2, 0.2, 0.2};
-        for (int i = 0; i < 4; i++) {
-            double actual = (double) counts[i] / numSamples;
-            assertEquals(expectedProbs[i], actual, 0.02, "Operator " + i + " probability mismatch");
-        }
-    }
+		double[] expectedProbs = {0.4, 0.2, 0.2, 0.2};
+		for (int i = 0; i < 4; i++) {
+			double actual = (double) counts[i] / numSamples;
+			assertEquals(expectedProbs[i], actual, 0.02, "Operator " + i + " probability mismatch");
+		}
+	}
 
-    @Test
-    void affectedQubitsCopied() {
-        ErrorChannel channel = ErrorChannel.depolarizing(0.1, 5);
-        int[] qubits = channel.affectedQubits();
-        assertEquals(5, qubits[0]);
+	@Test
+	void affectedQubitsCopied() {
+		ErrorChannel channel = ErrorChannel.depolarizing(0.1, 5);
+		int[] qubits = channel.affectedQubits();
+		assertEquals(5, qubits[0]);
 
-        qubits[0] = 999;
-        int[] qubits2 = channel.affectedQubits();
-        assertEquals(5, qubits2[0]);
-    }
+		qubits[0] = 999;
+		int[] qubits2 = channel.affectedQubits();
+		assertEquals(5, qubits2[0]);
+	}
 
-    @Test
-    void compositeChannelCombinesAffectedQubits() {
-        ErrorChannel ch1 = ErrorChannel.depolarizing(0.1, 0);
-        ErrorChannel ch2 = ErrorChannel.phaseFlip(0.05, 1);
-        ErrorChannel composite = ErrorChannel.compose(ch1, ch2);
+	@Test
+	void compositeChannelCombinesAffectedQubits() {
+		ErrorChannel ch1 = ErrorChannel.depolarizing(0.1, 0);
+		ErrorChannel ch2 = ErrorChannel.phaseFlip(0.05, 1);
+		ErrorChannel composite = ErrorChannel.compose(ch1, ch2);
 
-        int[] qubits = composite.affectedQubits();
-        assertArrayEquals(new int[] {0, 1}, qubits);
-    }
+		int[] qubits = composite.affectedQubits();
+		assertArrayEquals(new int[]{0, 1}, qubits);
+	}
 
-    @Test
-    void compositeChannelRejectsEmpty() {
-        assertThrows(IllegalArgumentException.class, () -> ErrorChannel.compose());
-    }
+	@Test
+	void compositeChannelRejectsEmpty() {
+		assertThrows(IllegalArgumentException.class, () -> ErrorChannel.compose());
+	}
 
-    @Test
-    void compositeChannelReturnsComponents() {
-        ErrorChannel ch1 = ErrorChannel.depolarizing(0.1, 0);
-        ErrorChannel ch2 = ErrorChannel.phaseFlip(0.05, 0);
-        CompositeChannel composite = (CompositeChannel) ErrorChannel.compose(ch1, ch2);
+	@Test
+	void compositeChannelReturnsComponents() {
+		ErrorChannel ch1 = ErrorChannel.depolarizing(0.1, 0);
+		ErrorChannel ch2 = ErrorChannel.phaseFlip(0.05, 0);
+		CompositeChannel composite = (CompositeChannel) ErrorChannel.compose(ch1, ch2);
 
-        ErrorChannel[] components = composite.getChannels();
-        assertEquals(2, components.length);
-        assertEquals(ch1, components[0]);
-        assertEquals(ch2, components[1]);
-    }
+		ErrorChannel[] components = composite.getChannels();
+		assertEquals(2, components.length);
+		assertEquals(ch1, components[0]);
+		assertEquals(ch2, components[1]);
+	}
 
-    @Test
-    void krausDecompositionRejectsEmptyOperators() {
-        assertThrows(
-                IllegalArgumentException.class, () -> new KrausDecomposition(java.util.List.of(), 1));
-    }
+	@Test
+	void krausDecompositionRejectsEmptyOperators() {
+		assertThrows(IllegalArgumentException.class, () -> new KrausDecomposition(java.util.List.of(), 1));
+	}
 
-    @Test
-    void krausDecompositionRejectsInconsistentDimensions() {
-        KrausOperator op1 = ErrorChannel.singleQubitOperator(
-                0.5,
-                ComplexNumber.one(),
-                ComplexNumber.zero(),
-                ComplexNumber.zero(),
-                ComplexNumber.one());
-        ComplexNumber[] matrix2 = new ComplexNumber[16];
-        for (int i = 0; i < 16; i++) {
-            matrix2[i] = ComplexNumber.zero();
-        }
-        KrausOperator op2 = new KrausOperator(matrix2, 0.5);
+	@Test
+	void krausDecompositionRejectsInconsistentDimensions() {
+		KrausOperator op1 = ErrorChannel.singleQubitOperator(0.5, ComplexNumber.one(), ComplexNumber.zero(),
+				ComplexNumber.zero(), ComplexNumber.one());
+		ComplexNumber[] matrix2 = new ComplexNumber[16];
+		for (int i = 0; i < 16; i++) {
+			matrix2[i] = ComplexNumber.zero();
+		}
+		KrausOperator op2 = new KrausOperator(matrix2, 0.5);
 
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> new KrausDecomposition(java.util.List.of(op1, op2), 1));
-    }
+		assertThrows(IllegalArgumentException.class, () -> new KrausDecomposition(java.util.List.of(op1, op2), 1));
+	}
 
-    @Test
-    void krausDecompositionRejectsBadProbabilitySum() {
-        KrausOperator op1 = ErrorChannel.singleQubitOperator(
-                0.3,
-                ComplexNumber.one(),
-                ComplexNumber.zero(),
-                ComplexNumber.zero(),
-                ComplexNumber.one());
-        KrausOperator op2 = ErrorChannel.singleQubitOperator(
-                0.3,
-                ComplexNumber.one(),
-                ComplexNumber.zero(),
-                ComplexNumber.zero(),
-                ComplexNumber.one());
+	@Test
+	void krausDecompositionRejectsBadProbabilitySum() {
+		KrausOperator op1 = ErrorChannel.singleQubitOperator(0.3, ComplexNumber.one(), ComplexNumber.zero(),
+				ComplexNumber.zero(), ComplexNumber.one());
+		KrausOperator op2 = ErrorChannel.singleQubitOperator(0.3, ComplexNumber.one(), ComplexNumber.zero(),
+				ComplexNumber.zero(), ComplexNumber.one());
 
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> new KrausDecomposition(java.util.List.of(op1, op2), 1));
-    }
+		assertThrows(IllegalArgumentException.class, () -> new KrausDecomposition(java.util.List.of(op1, op2), 1));
+	}
 
-    @Test
-    void krausOperatorComputesDimension() {
-        KrausOperator op = ErrorChannel.singleQubitOperator(
-                1.0,
-                ComplexNumber.one(),
-                ComplexNumber.zero(),
-                ComplexNumber.zero(),
-                ComplexNumber.one());
-        assertEquals(2, op.dimension());
-        assertEquals(1, op.numQubits());
-    }
+	@Test
+	void krausOperatorComputesDimension() {
+		KrausOperator op = ErrorChannel.singleQubitOperator(1.0, ComplexNumber.one(), ComplexNumber.zero(),
+				ComplexNumber.zero(), ComplexNumber.one());
+		assertEquals(2, op.dimension());
+		assertEquals(1, op.numQubits());
+	}
 
-    @Test
-    void krausOperatorRejectsNoInsquareMatrix() {
-        ComplexNumber[] matrix = new ComplexNumber[5];
-        for (int i = 0; i < 5; i++) {
-            matrix[i] = ComplexNumber.zero();
-        }
-        assertThrows(IllegalArgumentException.class, () -> new KrausOperator(matrix, 0.5));
-    }
+	@Test
+	void krausOperatorRejectsNoInsquareMatrix() {
+		ComplexNumber[] matrix = new ComplexNumber[5];
+		for (int i = 0; i < 5; i++) {
+			matrix[i] = ComplexNumber.zero();
+		}
+		assertThrows(IllegalArgumentException.class, () -> new KrausOperator(matrix, 0.5));
+	}
 
-    @Test
-    void krausOperatorRejectsBadProbability() {
-        ComplexNumber[] matrix = {
-            ComplexNumber.one(), ComplexNumber.zero(), ComplexNumber.zero(), ComplexNumber.one()
-        };
-        assertThrows(IllegalArgumentException.class, () -> new KrausOperator(matrix, -0.1));
-        assertThrows(IllegalArgumentException.class, () -> new KrausOperator(matrix, 1.5));
-        assertThrows(IllegalArgumentException.class, () -> new KrausOperator(matrix, Double.NaN));
-    }
+	@Test
+	void krausOperatorRejectsBadProbability() {
+		ComplexNumber[] matrix = {ComplexNumber.one(), ComplexNumber.zero(), ComplexNumber.zero(), ComplexNumber.one()};
+		assertThrows(IllegalArgumentException.class, () -> new KrausOperator(matrix, -0.1));
+		assertThrows(IllegalArgumentException.class, () -> new KrausOperator(matrix, 1.5));
+		assertThrows(IllegalArgumentException.class, () -> new KrausOperator(matrix, Double.NaN));
+	}
 
-    private static ComplexNumber[] applyChannel(KrausDecomposition decomposition, ComplexNumber[] density) {
-        int dimension = 1 << decomposition.numQubits();
-        ComplexNumber[] sum = new ComplexNumber[density.length];
-        for (int idx = 0; idx < sum.length; idx++) {
-            sum[idx] = ComplexNumber.zero();
-        }
-        for (KrausOperator operator : decomposition.operators()) {
-            ComplexNumber[] k = operator.matrix();
-            ComplexNumber[] kRho = multiply(k, density, dimension);
-            ComplexNumber[] kDagger = conjugateTranspose(k, dimension);
-            ComplexNumber[] contribution = multiply(kRho, kDagger, dimension);
-            for (int idx = 0; idx < sum.length; idx++) {
-                sum[idx] = sum[idx].plus(contribution[idx]);
-            }
-        }
-        return sum;
-    }
+	private static ComplexNumber[] applyChannel(KrausDecomposition decomposition, ComplexNumber[] density) {
+		int dimension = 1 << decomposition.numQubits();
+		ComplexNumber[] sum = new ComplexNumber[density.length];
+		for (int idx = 0; idx < sum.length; idx++) {
+			sum[idx] = ComplexNumber.zero();
+		}
+		for (KrausOperator operator : decomposition.operators()) {
+			ComplexNumber[] k = operator.matrix();
+			ComplexNumber[] kRho = multiply(k, density, dimension);
+			ComplexNumber[] kDagger = conjugateTranspose(k, dimension);
+			ComplexNumber[] contribution = multiply(kRho, kDagger, dimension);
+			for (int idx = 0; idx < sum.length; idx++) {
+				sum[idx] = sum[idx].plus(contribution[idx]);
+			}
+		}
+		return sum;
+	}
 
-    private static ComplexNumber[] conjugateTranspose(ComplexNumber[] matrix, int dimension) {
-        ComplexNumber[] result = new ComplexNumber[matrix.length];
-        for (int row = 0; row < dimension; row++) {
-            for (int col = 0; col < dimension; col++) {
-                result[col * dimension + row] = matrix[row * dimension + col].conjugate();
-            }
-        }
-        return result;
-    }
+	private static ComplexNumber[] conjugateTranspose(ComplexNumber[] matrix, int dimension) {
+		ComplexNumber[] result = new ComplexNumber[matrix.length];
+		for (int row = 0; row < dimension; row++) {
+			for (int col = 0; col < dimension; col++) {
+				result[col * dimension + row] = matrix[row * dimension + col].conjugate();
+			}
+		}
+		return result;
+	}
 
-    private static ComplexNumber[] multiply(ComplexNumber[] left, ComplexNumber[] right, int dimension) {
-        ComplexNumber[] result = new ComplexNumber[dimension * dimension];
-        for (int row = 0; row < dimension; row++) {
-            for (int col = 0; col < dimension; col++) {
-                ComplexNumber total = ComplexNumber.zero();
-                for (int mid = 0; mid < dimension; mid++) {
-                    total = total.plus(left[row * dimension + mid].times(right[mid * dimension + col]));
-                }
-                result[row * dimension + col] = total;
-            }
-        }
-        return result;
-    }
+	private static ComplexNumber[] multiply(ComplexNumber[] left, ComplexNumber[] right, int dimension) {
+		ComplexNumber[] result = new ComplexNumber[dimension * dimension];
+		for (int row = 0; row < dimension; row++) {
+			for (int col = 0; col < dimension; col++) {
+				ComplexNumber total = ComplexNumber.zero();
+				for (int mid = 0; mid < dimension; mid++) {
+					total = total.plus(left[row * dimension + mid].times(right[mid * dimension + col]));
+				}
+				result[row * dimension + col] = total;
+			}
+		}
+		return result;
+	}
 
-    private static void assertMatrixEquals(ComplexNumber[] expected, ComplexNumber[] actual) {
-        assertEquals(expected.length, actual.length);
-        for (int idx = 0; idx < expected.length; idx++) {
-            assertEquals(expected[idx].real(), actual[idx].real(), EPS, "real mismatch at " + idx);
-            assertEquals(expected[idx].imag(), actual[idx].imag(), EPS, "imag mismatch at " + idx);
-        }
-    }
+	private static void assertMatrixEquals(ComplexNumber[] expected, ComplexNumber[] actual) {
+		assertEquals(expected.length, actual.length);
+		for (int idx = 0; idx < expected.length; idx++) {
+			assertEquals(expected[idx].real(), actual[idx].real(), EPS, "real mismatch at " + idx);
+			assertEquals(expected[idx].imag(), actual[idx].imag(), EPS, "imag mismatch at " + idx);
+		}
+	}
 }

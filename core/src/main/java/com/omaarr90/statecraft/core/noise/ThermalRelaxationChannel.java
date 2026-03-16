@@ -7,146 +7,130 @@ import java.util.Objects;
 /**
  * Thermal relaxation channel combining T1 energy relaxation and T2 dephasing.
  * <p>
- * Models realistic qubit decoherence with a CPTP single-qubit Kraus decomposition
- * parameterized by gate time.
+ * Models realistic qubit decoherence with a CPTP single-qubit Kraus
+ * decomposition parameterized by gate time.
  * <p>
  * Constraint: T2 <= 2*T1 (physically required for positive rate)
  */
 final class ThermalRelaxationChannel implements ErrorChannel {
 
-    private final double t1;
-    private final double t2;
-    private final double gateTime;
-    private final int[] qubits;
-    private final KrausDecomposition decomposition;
+	private final double t1;
+	private final double t2;
+	private final double gateTime;
+	private final int[] qubits;
+	private final KrausDecomposition decomposition;
 
-    ThermalRelaxationChannel(double t1, double t2, double gateTime, int... qubits) {
-        if (t1 <= 0.0 || !Double.isFinite(t1)) {
-            throw new IllegalArgumentException("T1 must be positive and finite, got " + t1);
-        }
-        if (t2 <= 0.0 || !Double.isFinite(t2)) {
-            throw new IllegalArgumentException("T2 must be positive and finite, got " + t2);
-        }
-        if (t2 > 2.0 * t1) {
-            throw new IllegalArgumentException(
-                    "T2 must satisfy T2 <= 2*T1 (physical constraint), got T1=" + t1 + ", T2=" + t2);
-        }
-        if (gateTime < 0.0 || !Double.isFinite(gateTime)) {
-            throw new IllegalArgumentException("gate time must be non-negative and finite, got "
-                    + gateTime);
-        }
-        if (qubits.length != 1) {
-            throw new IllegalArgumentException(
-                    "thermal relaxation channel currently only supports single qubits");
-        }
+	ThermalRelaxationChannel(double t1, double t2, double gateTime, int... qubits) {
+		if (t1 <= 0.0 || !Double.isFinite(t1)) {
+			throw new IllegalArgumentException("T1 must be positive and finite, got " + t1);
+		}
+		if (t2 <= 0.0 || !Double.isFinite(t2)) {
+			throw new IllegalArgumentException("T2 must be positive and finite, got " + t2);
+		}
+		if (t2 > 2.0 * t1) {
+			throw new IllegalArgumentException(
+					"T2 must satisfy T2 <= 2*T1 (physical constraint), got T1=" + t1 + ", T2=" + t2);
+		}
+		if (gateTime < 0.0 || !Double.isFinite(gateTime)) {
+			throw new IllegalArgumentException("gate time must be non-negative and finite, got " + gateTime);
+		}
+		if (qubits.length != 1) {
+			throw new IllegalArgumentException("thermal relaxation channel currently only supports single qubits");
+		}
 
-        this.t1 = t1;
-        this.t2 = t2;
-        this.gateTime = gateTime;
-        this.qubits = qubits.clone();
-        this.decomposition = buildKrausDecomposition();
-    }
+		this.t1 = t1;
+		this.t2 = t2;
+		this.gateTime = gateTime;
+		this.qubits = qubits.clone();
+		this.decomposition = buildKrausDecomposition();
+	}
 
-    @Override
-    public KrausDecomposition krausDecomposition() {
-        return decomposition;
-    }
+	@Override
+	public KrausDecomposition krausDecomposition() {
+		return decomposition;
+	}
 
-    @Override
-    public int[] affectedQubits() {
-        return qubits.clone();
-    }
+	@Override
+	public int[] affectedQubits() {
+		return qubits.clone();
+	}
 
-    private KrausDecomposition buildKrausDecomposition() {
-        double a = Math.exp(-gateTime / t1);
-        double b = Math.exp(-gateTime / t2);
-        double sqrtA = Math.sqrt(Math.max(0.0, a));
-        double lambda = sqrtA == 0.0
-                ? 1.0
-                : clampUnit(b / sqrtA);
+	private KrausDecomposition buildKrausDecomposition() {
+		double a = Math.exp(-gateTime / t1);
+		double b = Math.exp(-gateTime / t2);
+		double sqrtA = Math.sqrt(Math.max(0.0, a));
+		double lambda = sqrtA == 0.0 ? 1.0 : clampUnit(b / sqrtA);
 
-        double plus = 0.5 * (1.0 + lambda);
-        double minus = 0.5 * (1.0 - lambda);
+		double plus = 0.5 * (1.0 + lambda);
+		double minus = 0.5 * (1.0 - lambda);
 
-        double k0Diag0 = Math.sqrt(plus);
-        double k0Diag1 = sqrtA * k0Diag0;
-        ComplexNumber[] k0Matrix = {
-                new ComplexNumber(k0Diag0, 0.0),
-                ComplexNumber.zero(),
-                ComplexNumber.zero(),
-                new ComplexNumber(k0Diag1, 0.0)
-        };
+		double k0Diag0 = Math.sqrt(plus);
+		double k0Diag1 = sqrtA * k0Diag0;
+		ComplexNumber[] k0Matrix = {new ComplexNumber(k0Diag0, 0.0), ComplexNumber.zero(), ComplexNumber.zero(),
+				new ComplexNumber(k0Diag1, 0.0)};
 
-        double k1Diag0 = Math.sqrt(minus);
-        double k1Diag1 = sqrtA * k1Diag0;
-        ComplexNumber[] k1Matrix = {
-                new ComplexNumber(k1Diag0, 0.0),
-                ComplexNumber.zero(),
-                ComplexNumber.zero(),
-                new ComplexNumber(-k1Diag1, 0.0)
-        };
+		double k1Diag0 = Math.sqrt(minus);
+		double k1Diag1 = sqrtA * k1Diag0;
+		ComplexNumber[] k1Matrix = {new ComplexNumber(k1Diag0, 0.0), ComplexNumber.zero(), ComplexNumber.zero(),
+				new ComplexNumber(-k1Diag1, 0.0)};
 
-        double k2OffDiag = Math.sqrt(Math.max(0.0, 1.0 - a));
-        ComplexNumber[] k2Matrix = {
-                ComplexNumber.zero(),
-                new ComplexNumber(k2OffDiag, 0.0),
-                ComplexNumber.zero(),
-                ComplexNumber.zero()
-        };
+		double k2OffDiag = Math.sqrt(Math.max(0.0, 1.0 - a));
+		ComplexNumber[] k2Matrix = {ComplexNumber.zero(), new ComplexNumber(k2OffDiag, 0.0), ComplexNumber.zero(),
+				ComplexNumber.zero()};
 
-        double w0 = traceWeight(k0Matrix);
-        double w1 = traceWeight(k1Matrix);
-        double w2 = traceWeight(k2Matrix);
-        double sum = w0 + w1 + w2;
-        if (!Double.isFinite(sum) || sum <= 0.0) {
-            throw new IllegalStateException("invalid thermal-relaxation Kraus weights: " + sum);
-        }
+		double w0 = traceWeight(k0Matrix);
+		double w1 = traceWeight(k1Matrix);
+		double w2 = traceWeight(k2Matrix);
+		double sum = w0 + w1 + w2;
+		if (!Double.isFinite(sum) || sum <= 0.0) {
+			throw new IllegalStateException("invalid thermal-relaxation Kraus weights: " + sum);
+		}
 
-        KrausOperator k0 = new KrausOperator(k0Matrix, w0 / sum);
-        KrausOperator k1 = new KrausOperator(k1Matrix, w1 / sum);
-        KrausOperator k2 = new KrausOperator(k2Matrix, w2 / sum);
-        return new KrausDecomposition(List.of(k0, k1, k2), 1);
-    }
+		KrausOperator k0 = new KrausOperator(k0Matrix, w0 / sum);
+		KrausOperator k1 = new KrausOperator(k1Matrix, w1 / sum);
+		KrausOperator k2 = new KrausOperator(k2Matrix, w2 / sum);
+		return new KrausDecomposition(List.of(k0, k1, k2), 1);
+	}
 
-    private static double clampUnit(double value) {
-        if (!Double.isFinite(value)) {
-            return value > 0.0 ? 1.0 : 0.0;
-        }
-        if (value < 0.0) {
-            return 0.0;
-        }
-        if (value > 1.0) {
-            return 1.0;
-        }
-        return value;
-    }
+	private static double clampUnit(double value) {
+		if (!Double.isFinite(value)) {
+			return value > 0.0 ? 1.0 : 0.0;
+		}
+		if (value < 0.0) {
+			return 0.0;
+		}
+		if (value > 1.0) {
+			return 1.0;
+		}
+		return value;
+	}
 
-    private static double traceWeight(ComplexNumber[] matrix) {
-        double weight = 0.0;
-        for (ComplexNumber element : matrix) {
-            weight += element.magnitudeSquared();
-        }
-        return weight;
-    }
+	private static double traceWeight(ComplexNumber[] matrix) {
+		double weight = 0.0;
+		for (ComplexNumber element : matrix) {
+			weight += element.magnitudeSquared();
+		}
+		return weight;
+	}
 
-    @Override
-    public boolean equals(Object obj) {
-        if (obj == this) return true;
-        if (!(obj instanceof ThermalRelaxationChannel other)) return false;
-        return Double.compare(t1, other.t1) == 0
-                && Double.compare(t2, other.t2) == 0
-                && Double.compare(gateTime, other.gateTime) == 0
-                && java.util.Arrays.equals(qubits, other.qubits);
-    }
+	@Override
+	public boolean equals(Object obj) {
+		if (obj == this)
+			return true;
+		if (!(obj instanceof ThermalRelaxationChannel other))
+			return false;
+		return Double.compare(t1, other.t1) == 0 && Double.compare(t2, other.t2) == 0
+				&& Double.compare(gateTime, other.gateTime) == 0 && java.util.Arrays.equals(qubits, other.qubits);
+	}
 
-    @Override
-    public int hashCode() {
-        return Objects.hash(t1, t2, gateTime, java.util.Arrays.hashCode(qubits));
-    }
+	@Override
+	public int hashCode() {
+		return Objects.hash(t1, t2, gateTime, java.util.Arrays.hashCode(qubits));
+	}
 
-    @Override
-    public String toString() {
-        return "ThermalRelaxationChannel[T1=" + t1 + ", T2=" + t2 + ", gateTime=" + gateTime
-                + ", qubits=" + java.util.Arrays.toString(qubits) + "]";
-    }
+	@Override
+	public String toString() {
+		return "ThermalRelaxationChannel[T1=" + t1 + ", T2=" + t2 + ", gateTime=" + gateTime + ", qubits="
+				+ java.util.Arrays.toString(qubits) + "]";
+	}
 }

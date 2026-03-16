@@ -1,103 +1,119 @@
-# StateCraft Progress Report
+# StateCraft Current State
 
-This document captures the current implementation status of the StateCraft quantum circuit simulator. It summarizes the architecture, functional pieces, and supporting assets that exist in the repository today.
+StateCraft is a multi-module Java quantum circuit simulator with three engines:
+`statevector`, `stabilizer`, and `tensornetwork`. The repository is organized as:
 
-## Repository Structure
+- `core/`: circuit model, parsers, math primitives, measurement API, and noise model.
+- `engines/`: simulator backends exposed through `ServiceLoader`.
+- `app/`: Picocli CLI plus GraalVM native-image packaging.
+- `docs/`: architecture notes, overview documents, and project deliverables.
 
-- `core/`: Core library providing math primitives and quantum circuit logic.
-- `engines/`: Simulator backends implementing the shared service interface (statevector, stabilizer, tensor-network).
-- `app/`: Command-line interface packaged with GraalVM native-image support.
-- `docs/`: Architecture decisions, planning deliverables, and this progress report.
+## Circuit model and parsing
 
-## Core Library
+`QuantumCircuit` supports:
 
-### Math Primitives
+- single-qubit gates: `h`, `x`, `y`, `z`, `s`, `sdg`
+- two-qubit operations: `cx`, controlled phase (`cp`), arbitrary diagonal two-qubit gates, and `swap`
+- controlled-Pauli builders: `appendControlledX/Y/Z(...)`
+- multi-control builders: `appendToffoli(...)` and `appendMultiControl(...)`
+- measurement metadata as a terminal circuit suffix
 
-- `ComplexNumber` (record): immutable complex scalar with arithmetic helpers (`plus`, `minus`, `times`, `scale`, `conjugate`, `magnitudeSquared`) and cached `zero()`/`one()` instances.
-- `ComplexArrays`: BLAS-style operations on interleaved `[re0, im0, re1, im1, ...]` buffers, including:
-  - Norm calculations (`norm2`, `norm2Sq`) with robust scaling to avoid overflow.
-  - `scal` for complex scaling in place.
-  - `axpy` for fused multiply-add that tolerates overlapping slices.
-  - `mul` for element-wise complex multiplication supporting aliasing.
-  - Comprehensive argument validation (null, bounds, alignment) with IEEE-754 semantics.
-- Unit tests cover correctness, boundary conditions, NaN/Infinity propagation, and aliasing scenarios (`ComplexArraysTest`, `ComplexArraysTinyOpsTest`).
+The JSON parser accepts `h`, `x`, `y`, `z`, `s`, `sdg`, `cx`, `cy`, `cz`, `swap`, `cp`, `ccx`, `mcx`, `mcy`,
+`mcz`, `measure`, and `barrier`.
 
-### Quantum Circuit Model
+The OpenQASM parser accepts an `OPENQASM 3.0;` subset with:
 
-- `SingleQubitGate` sealed interface and concrete Pauli X/Y/Z plus Hadamard gate records with precomputed matrix elements.
-- `QuantumCircuit` record representing an ordered list of single-qubit gate applications; includes validation of qubit ranges and lazy application to state vectors.
-- `StateVector` record encapsulating immutable amplitude snapshots backed by interleaved double arrays; exposes indexed accessors and cloning safeguards.
-- Tests verify gate matrices, circuit evolution on 1- and 2-qubit examples, and phase behavior (`SingleQubitGateTest`, `QuantumCircuitTest`).
+- `qubit[n] q;` and optional `bit[n] c;`
+- gates `h`, `x`, `y`, `z`, `s`, `sdg`, `cx`, `cy`, `cz`, `ccx`, `swap`, and `cp(angle)`
+- `barrier`
+- `measure q[i] -> c[i];` and register-wide `measure q;`
 
-### Circuit Parsing
+Parser ingress now tolerates a leading UTF-8 BOM on circuit files, and QASM angles accept standard scientific
+notation such as `1e-3` and `-2.5E-1`.
 
-- `core.parse` defines a pluggable `CircuitParser` API plus `CircuitParseException` with optional line/column metadata.
-- JSON parser supports a compact schema with `qubits` and `operations`, covering `h`, `x`, `y`, `z`, `cx`, `swap`, `cp`, and `measure` (measurements must appear after unitary gates).
-- OpenQASM 3 subset parser supports `OPENQASM 3.0;`, `qubit[n] q;`, optional `bit[n] c;`, and the same gate/measurement set with `pi`-based angles.
-- Format detection prefers an explicit format, falls back to file extension, and finally checks for an `OPENQASM` prefix.
+## Engines
 
-## Engine Abstraction
+`statevector`
 
-- `SimulatorEngine` interface defines the contract (`id()` plus `simulate`) that concrete simulation back-ends implement and expose via `ServiceLoader`.
-- `StatevectorEngine` (in `engines` module) now drives SIMD-accelerated kernels directly over the canonical AoS `[re, im]` buffer, eliminating the legacy real/imag split staging arrays. The refactor tightened `StatevectorKernels` signatures around a single `double[]` and added vector-friendly shuffle helpers so gather/scatter stays localized.
-- `TensorNetworkEngine` is implemented as an MPS backend for shallow larger circuits (up to 50 qubits, depth <= 40) with seeded shot sampling and bounded bond-dimension truncation.
-- A manual microbenchmark (`StatevectorKernelMicrobenchmark` under `engines/src/test/java`) contrasts the AoS kernels with a split-buffer reference to track throughput deltas. Run it with `java --enable-preview --add-modules jdk.incubator.vector -cp engines/build/classes/java/main:engines/build/classes/java/test com.omaarr90.statecraft.engines.statevector.StatevectorKernelMicrobenchmark`.
-- Running tests or the CLI with this engine still requires `--enable-preview --add-modules jdk.incubator.vector`.
+- dense statevector simulator backed by Vector API kernels
+- supports all circuit operations in the current model
+- supports seeded measurement sampling and noise application after each unitary gate
 
-## Noise-Aware Statevector Simulation
+`stabilizer`
 
-- `SimulationRequest` optionally carries a `NoiseModel` plus a noise RNG seed for reproducible Kraus sampling.
-- `StatevectorEngine` applies noise channels after each unitary gate; measurement operations remain a terminal suffix.
-- Built-in single-qubit channels (depolarizing, amplitude damping, phase flip/damping, thermal relaxation) are supported; composite channels apply sequentially.
-- Limitations: multi-qubit Kraus operators are not supported, idle-time noise is not modeled, and the CLI does not yet expose noise configuration. Kraus operator selection uses the probabilities defined in the channel decomposition (state-independent). One noise trajectory is sampled per simulation; shot sampling draws from that final state.
+- Clifford-focused simulator backed by an Aaronson-Gottesman tableau
+- supports Clifford single-qubit gates, `cx`, `swap`, CZ-style diagonal gates, and single-control Pauli builders
+- rejects arbitrary two-qubit unitaries, multi-control gates with more than one control, and noisy simulation
 
-### How to run noisy simulations (Java API)
+`tensornetwork`
 
-```java
-NoiseModel model = NoiseModel.builder()
-        .afterAllGates(ErrorChannel.amplitudeDamping(0.05, 0))
-        .afterAllGates(ErrorChannel.phaseFlip(0.02, 0))
-        .build();
+- MPS backend for shallow circuits
+- supports single-qubit gates, `cx`, diagonal two-qubit gates, `swap`, and measurement suffixes
+- rejects arbitrary two-qubit unitaries, multi-control gates, and noisy simulation
 
-SimulationRequest request = SimulationRequest.zeroState(circuit)
-        .withNoiseModel(model)
-        .withNoiseSeed(1234L); // optional
+## Noise support
 
-SimulationResult result = engine.simulate(request);
-```
+The core noise model supports:
 
-## Command-Line Interface
+- depolarizing
+- amplitude damping
+- phase flip
+- phase damping
+- thermal relaxation (`t1`, `t2`, `gateTime`)
+- composite channels
+- gate-type, idle-qubit, and global scheduling through `NoiseModel`
 
-- `StatecraftCli` uses Picocli to expose a `statecraft` command with an `engines` subcommand.
-- The CLI demo subcommand now resolves the `statevector` engine, runs the Bell-state circuit through it, and pretty-prints the non-zero amplitudes.
-- `statecraft run` loads a circuit file (`--input`) with `--format qasm|json|auto`, runs it on the requested engine, and prints amplitudes plus optional shot measurements.
-- A hard-coded `suite` subcommand executes a mini algorithm catalog (Bell pair, GHZ, 3-qubit QFT) and prints both amplitude breakdowns and deterministic measurement histograms.
-- Shot sampling flags (`--shots`, `--seed`, `--samples`) request histograms or raw outcomes alongside amplitudes, making it easy to experiment with shot-based workflows.
-- Build script enables GraalVM native image generation (`org.graalvm.buildtools.native` plugin) with autodetected resources.
+`StatevectorEngine` applies scheduled noise after each unitary gate. Noise sampling can be made deterministic with a
+noise seed. A noise seed without any configured noise channels is rejected, including seed-only JSON noise configs.
 
-## Build, Tooling, and Quality Gates
+## CLI
 
-- Multi-project Gradle build targeting Java 25 toolchain for all subprojects.
-- Spotless plugin configured globally (runs on `./gradlew spotlessCheck`).
-- Testing uses JUnit Jupiter 5.12 with platform launcher for IDE compatibility; `./gradlew test` exercises core and app modules.
-- Dependency versions centralized in `gradle/libs.versions.toml`.
+The CLI entrypoint is `statecraft` with four subcommands:
 
-## Documentation and Planning Assets
+- `statecraft engines`: list discovered engine ids
+- `statecraft demo`: run the built-in Bell-state demo
+- `statecraft run --input <file>`: parse and simulate a JSON or QASM circuit
+- `statecraft suite`: execute the built-in Bell/GHZ/QFT sample suite
 
-- Architecture Decision Record `docs/core/statevector-layout.md` documents chosen statevector bit order, complex precision, and AoS layout.
-- Measurement semantics for shot sampling and CLI integration are described in `docs/core/statevector-measurements.md`.
-- Project proposal (`docs/deliverables/project-proposal.md` and PDF variant) outlines long-term roadmap, milestones, and engine strategy.
+`demo` and `run` support measurement flags:
 
-## Current Gaps and Next Steps
+- `--shots`
+- `--seed`
+- `--samples`
+- `--omit-final-state`
 
-- Tensor-network v1 intentionally excludes noisy simulation, arbitrary two-qubit unitary matrices, and multi-control gates.
-- OpenQASM support is deliberately limited to a small subset; expand grammar coverage and gate support as formats mature.
-- Additional documentation will be needed as engines and parsers are introduced.
+`run` also supports:
 
-## How to Reproduce the Current State
+- `--format qasm|json|auto`
+- `--engine <id>`
+
+`demo`, `run`, and `suite` all accept noise options:
+
+- `--noise-config <json>`
+- `--noise-seed <long>`
+- `--noise-depolarizing <p>`
+- `--noise-amplitude-damping <gamma>`
+- `--noise-phase-flip <p>`
+- `--noise-phase-damping <lambda>`
+- `--noise-thermal-t1 <seconds>`
+- `--noise-thermal-t2 <seconds>`
+- `--noise-thermal-gate-time <seconds>`
+
+CLI noise config files may carry a leading UTF-8 BOM. CLI flags and config values are merged, and CLI `--noise-seed`
+overrides `noiseSeed` from the config file.
+
+## Build, CI, and formatting
+
+- Gradle multi-project build using the Java 25 toolchain
+- JUnit 5 test suites across `core`, `engines`, and `app`
+- Spotless enforcement for Java, Gradle Kotlin DSL, and basic Markdown or `.gitignore` whitespace hygiene
+- GitHub Actions CI:
+  - matrix build on `ubuntu-latest`, `macos-latest`, and `windows-latest`
+  - Ubuntu native-image job running `:app:nativeCompile`
+
+Common local commands:
 
 ```sh
-./gradlew test
+./gradlew spotlessCheck test
+./gradlew :app:nativeCompile
 ```
-
-The command runs all unit tests and verifies the code compiles across the multi-module build. Spotless can be invoked via `./gradlew spotlessCheck` to enforce formatting prior to commits.

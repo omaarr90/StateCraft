@@ -1,6 +1,8 @@
 .gradle/
+.gradle-home/
 build/
 **/build/
+**/bin/
 .idea/
 .vscode/
 *.iml

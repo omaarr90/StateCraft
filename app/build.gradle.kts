@@ -48,11 +48,13 @@ tasks.named<Test>("test") {
 
 tasks.withType<JavaCompile>().configureEach {
     options.compilerArgs.addAll(
-            listOf(
-                    "--enable-preview",
-                    "--add-modules",
-                    "jdk.incubator.vector",
-                    "-Aproject=${project.group}/${project.name}"))
+        listOf(
+            "--enable-preview",
+            "--add-modules",
+            "jdk.incubator.vector",
+            "-Aproject=${project.group}/${project.name}",
+        ),
+    )
 }
 
 graalvmNative {
@@ -61,10 +63,12 @@ graalvmNative {
             imageName.set("statecraft")
             resources.autodetect()
             buildArgs.addAll(
-                    listOf(
-                            "--enable-preview",
-                            "--add-modules=jdk.incubator.vector",
-                            "-H:+VectorAPISupport"))
+                listOf(
+                    "--enable-preview",
+                    "--add-modules=jdk.incubator.vector",
+                    "-H:+VectorAPISupport",
+                ),
+            )
         }
     }
 }

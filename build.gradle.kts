@@ -2,6 +2,27 @@ plugins {
     alias(libs.plugins.spotless)
 }
 
+apply(from = "gradle/benchmark-validation.gradle.kts")
+
+spotless {
+    java {
+        target("**/src/*/java/**/*.java")
+        eclipse()
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
+    kotlinGradle {
+        target("*.gradle.kts", "**/*.gradle.kts")
+        ktlint()
+    }
+    format("misc") {
+        target("**/*.md", ".gitignore")
+        targetExclude("**/build/**", "**/bin/**")
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
+}
+
 allprojects {
     repositories { mavenCentral() }
 }

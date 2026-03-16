@@ -7,7 +7,7 @@ Technically, the simulator will feature a modular architecture with interchangea
 -	Noise engine that injects realistic error channels (depolarizing, amplitude‑damping, phase‑flip, T₁/T₂ decoherence) at gate‑, qubit‑, or cycle‑granularity, enabling fidelity studies and algorithm robustness tests.
 -	Stabilizer and tensor‑network paths for Clifford and shallow‑depth, large‑qubit workloads.
 Built‑in support for parallelism, SIMD intrinsics, and memory‑efficient data layouts will be benchmarked against leading simulators such as Qiskit Aer and QuEST.
-Key deliverables include: 
+Key deliverables include:
 -	GraalVM‑native binaries and Gradle artifacts.
 -	Well‑documented Java API and native command‑line interface.
 -	Comprehensive documentation, tutorials, and unit tests.
@@ -20,13 +20,13 @@ O‑2  Noise Simulation	Integrate configurable depolarizing, amplitude‑dam
 O‑3  Alternative Engines	Provide (a) a stabilizer simulator for Clifford circuits up to 1,000 qubits and (b) an experimental tensor‑network path that can handle 50 qubits at depth ≤40
 O‑4  Parallelism & SIMD	Integrate SIMD intrinsics (JDK Vector API)
 O‑5 Developer Interface	Publish a well‑documented Java API and a command‑line interface packaged in the native binary.
-O‑6 Algorithm Case-Study Suite	Implement and document a set of representative quantum algorithms/circuits with clear expected outcomes: 
+O‑6 Algorithm Case-Study Suite	Implement and document a set of representative quantum algorithms/circuits with clear expected outcomes:
 -	Bell state & GHZ
 -	Deutsch–Jozsa and Bernstein–Vazirani
 -	Quantum Fourier Transform (QFT) & Phase Estimation (small n)
 TECHNICAL APPROACH & METHODOLOGY
 SYSTEM ARCHITECTURE
- 
+
 -	Front‑end – A fluent Java builder (CircuitBuilder) plus a concise CLI that reads OpenQASM 3 or JSON, builds a circuit object, and invokes the selected back‑end.
 -	Back‑ends – Pluggable engines share a common SimulatorEngine interface and register via Java’s ServiceLoader.
 -	Core Kernel – Centralised BLAS‑like routines (Kronecker products, matrix‑vector multiplies) written in plain Java but leveraging the JDK Vector API.
@@ -55,5 +55,5 @@ M5 – Native & Parallel Gains (T4-W8)	SIMD and parallelaization
 M6 – Release Candidate (T4-W13)	Final benchmarks + validation report
 
 CONCLUSION
-This project charts a clearpath to deliver a high‑performance, noise‑aware quantum‑circuit simulator written in pure Java and compiled to a GraalVM native binary. By focusing on a rigorously validated state‑vector core, extensible noise models, alternative stabilizer and tensor‑network engines, and a developer‑friendly Java API and CLI. 
+This project charts a clearpath to deliver a high‑performance, noise‑aware quantum‑circuit simulator written in pure Java and compiled to a GraalVM native binary. By focusing on a rigorously validated state‑vector core, extensible noise models, alternative stabilizer and tensor‑network engines, and a developer‑friendly Java API and CLI.
 A concise eight‑phase work plan with six concrete milestones demonstrates both technical feasibility and time‑bounded accountability, ensuring that, by the end of 4th Term, KFUPM researchers and students will have a portable, open‑source simulator capable of prototyping and benchmarking quantum algorithms without specialised hardware.

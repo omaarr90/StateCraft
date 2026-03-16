@@ -8,28 +8,25 @@ import org.junit.jupiter.api.Test;
 
 class StateVectorTest {
 
-    @Test
-    void zeroRejectsQubitCountAboveDenseLimit() {
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> StateVector.zero(30));
+	@Test
+	void zeroRejectsQubitCountAboveDenseLimit() {
+		IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> StateVector.zero(30));
 
-        assertTrue(exception.getMessage().contains("at most 29 qubits"));
-    }
+		assertTrue(exception.getMessage().contains("at most 29 qubits"));
+	}
 
-    @Test
-    void fromArrayRejectsQubitCountAboveDenseLimit() {
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> StateVector.fromArray(30, new double[0]));
+	@Test
+	void fromArrayRejectsQubitCountAboveDenseLimit() {
+		IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+				() -> StateVector.fromArray(30, new double[0]));
 
-        assertTrue(exception.getMessage().contains("at most 29 qubits"));
-    }
+		assertTrue(exception.getMessage().contains("at most 29 qubits"));
+	}
 
-    @Test
-    void zeroAcceptsSupportedQubitCount() {
-        StateVector state = StateVector.zero(5);
-        assertEquals(5, state.qubitCount());
-        assertEquals(32, state.dimension());
-    }
+	@Test
+	void zeroAcceptsSupportedQubitCount() {
+		StateVector state = StateVector.zero(5);
+		assertEquals(5, state.qubitCount());
+		assertEquals(32, state.dimension());
+	}
 }

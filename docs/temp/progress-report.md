@@ -1,9 +1,9 @@
 # Progress Report: StateCraft Noise Layer (Phase 4)
 
-Name: Omar Alshammari  
-ID: 200819560  
-University: KFUPM  
-Course: COE 619  
+Name: Omar Alshammari
+ID: 200819560
+University: KFUPM
+Course: COE 619
 
 ## Introduction (Phases 1-3 Summary)
 Phase 1 established the project foundation: a multi-module Gradle layout, GraalVM native-image configuration, a CLI entry point, and initial tooling scaffolding. Phase 2 delivered the circuit ingest pipeline by adding a parser API plus JSON and OpenQASM 3 (subset) parsers, format detection, and end-to-end tests that run parsed circuits on the engine. Phase 3 completed the statevector MVP with SIMD-accelerated kernels, measurement sampling (counts and samples), and a small algorithm suite (e.g., Bell, GHZ, QFT) backed by unit and integration tests. These phases provided a stable engine and API surface to integrate noise in Phase 4.
@@ -97,7 +97,7 @@ Case 2: X on |0>
 - CLI noise configuration currently targets global channels; gate-specific and per-qubit schedule design remains primarily API-driven.
 - One noise trajectory is sampled per simulation; no trajectory averaging is provided yet.
 
-## Next Steps 
+## Next Steps
 1. Add CLI flags and configuration loaders for noise models.
 2. Extend support to multi-qubit Kraus operators in the engine and channel definitions.
 3. Introduce idle-time noise using circuit scheduling or explicit gate-time metadata.

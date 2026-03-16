@@ -8,127 +8,119 @@ import org.junit.jupiter.api.Test;
 
 class QuantumCircuitTest {
 
-    private static final double EPS = 1e-9;
+	private static final double EPS = 1e-9;
 
-    @Test
-    void xGateTurnsZeroIntoOne() {
-        QuantumCircuit circuit = new QuantumCircuit(1);
-        circuit = circuit.append(new PauliX(), 0);
-        ComplexNumber[] result = circuit.apply();
-        assertComplexEquals(ComplexNumber.zero(), result[0]);
-        assertComplexEquals(ComplexNumber.one(), result[1]);
-    }
+	@Test
+	void xGateTurnsZeroIntoOne() {
+		QuantumCircuit circuit = new QuantumCircuit(1);
+		circuit = circuit.append(new PauliX(), 0);
+		ComplexNumber[] result = circuit.apply();
+		assertComplexEquals(ComplexNumber.zero(), result[0]);
+		assertComplexEquals(ComplexNumber.one(), result[1]);
+	}
 
-    @Test
-    void hadamardCreatesPlusState() {
-        QuantumCircuit circuit = new QuantumCircuit(1).append(new Hadamard(), 0);
-        ComplexNumber[] result = circuit.apply();
-        double invSqrt2 = 1.0 / Math.sqrt(2.0);
-        assertComplexEquals(new ComplexNumber(invSqrt2, 0.0), result[0]);
-        assertComplexEquals(new ComplexNumber(invSqrt2, 0.0), result[1]);
-    }
+	@Test
+	void hadamardCreatesPlusState() {
+		QuantumCircuit circuit = new QuantumCircuit(1).append(new Hadamard(), 0);
+		ComplexNumber[] result = circuit.apply();
+		double invSqrt2 = 1.0 / Math.sqrt(2.0);
+		assertComplexEquals(new ComplexNumber(invSqrt2, 0.0), result[0]);
+		assertComplexEquals(new ComplexNumber(invSqrt2, 0.0), result[1]);
+	}
 
-    @Test
-    void twoQubitSequenceActsOnCorrectTargets() {
-        QuantumCircuit circuit = new QuantumCircuit(2);
-        circuit = circuit.append(new Hadamard(), 0);
-        circuit = circuit.append(new PauliX(), 1);
-        ComplexNumber[] result = circuit.apply();
-        ComplexNumber zero = ComplexNumber.zero();
-        ComplexNumber amp = new ComplexNumber(1.0 / Math.sqrt(2.0), 0.0);
-        assertComplexEquals(zero, result[0]);
-        assertComplexEquals(zero, result[1]);
-        assertComplexEquals(amp, result[2]);
-        assertComplexEquals(amp, result[3]);
-    }
+	@Test
+	void twoQubitSequenceActsOnCorrectTargets() {
+		QuantumCircuit circuit = new QuantumCircuit(2);
+		circuit = circuit.append(new Hadamard(), 0);
+		circuit = circuit.append(new PauliX(), 1);
+		ComplexNumber[] result = circuit.apply();
+		ComplexNumber zero = ComplexNumber.zero();
+		ComplexNumber amp = new ComplexNumber(1.0 / Math.sqrt(2.0), 0.0);
+		assertComplexEquals(zero, result[0]);
+		assertComplexEquals(zero, result[1]);
+		assertComplexEquals(amp, result[2]);
+		assertComplexEquals(amp, result[3]);
+	}
 
-    @Test
-    void zGateAddsPhaseToOneState() {
-        QuantumCircuit circuit = new QuantumCircuit(1).append(new PauliZ(), 0);
-        ComplexNumber[] initial = { ComplexNumber.zero(), ComplexNumber.one() };
-        ComplexNumber[] result = circuit.apply(initial);
-        assertComplexEquals(ComplexNumber.zero(), result[0]);
-        assertComplexEquals(new ComplexNumber(-1.0, 0.0), result[1]);
-    }
+	@Test
+	void zGateAddsPhaseToOneState() {
+		QuantumCircuit circuit = new QuantumCircuit(1).append(new PauliZ(), 0);
+		ComplexNumber[] initial = {ComplexNumber.zero(), ComplexNumber.one()};
+		ComplexNumber[] result = circuit.apply(initial);
+		assertComplexEquals(ComplexNumber.zero(), result[0]);
+		assertComplexEquals(new ComplexNumber(-1.0, 0.0), result[1]);
+	}
 
-    @Test
-    void sAndSdgApplyExpectedPhases() {
-        QuantumCircuit sCircuit = new QuantumCircuit(1).append(new SGate(), 0);
-        QuantumCircuit sdgCircuit = new QuantumCircuit(1).append(new SdgGate(), 0);
-        ComplexNumber[] initial = { ComplexNumber.zero(), ComplexNumber.one() };
+	@Test
+	void sAndSdgApplyExpectedPhases() {
+		QuantumCircuit sCircuit = new QuantumCircuit(1).append(new SGate(), 0);
+		QuantumCircuit sdgCircuit = new QuantumCircuit(1).append(new SdgGate(), 0);
+		ComplexNumber[] initial = {ComplexNumber.zero(), ComplexNumber.one()};
 
-        ComplexNumber[] sResult = sCircuit.apply(initial);
-        ComplexNumber[] sdgResult = sdgCircuit.apply(initial);
+		ComplexNumber[] sResult = sCircuit.apply(initial);
+		ComplexNumber[] sdgResult = sdgCircuit.apply(initial);
 
-        assertComplexEquals(ComplexNumber.zero(), sResult[0]);
-        assertComplexEquals(new ComplexNumber(0.0, 1.0), sResult[1]);
-        assertComplexEquals(ComplexNumber.zero(), sdgResult[0]);
-        assertComplexEquals(new ComplexNumber(0.0, -1.0), sdgResult[1]);
-    }
+		assertComplexEquals(ComplexNumber.zero(), sResult[0]);
+		assertComplexEquals(new ComplexNumber(0.0, 1.0), sResult[1]);
+		assertComplexEquals(ComplexNumber.zero(), sdgResult[0]);
+		assertComplexEquals(new ComplexNumber(0.0, -1.0), sdgResult[1]);
+	}
 
-    @Test
-    void cnotFlipsTargetWhenControlIsOne() {
-        QuantumCircuit circuit = new QuantumCircuit(2)
-                .append(new PauliX(), 1)
-                .append(CnotGate.of(), 1, 0);
-        ComplexNumber[] result = circuit.apply();
-        ComplexNumber zero = ComplexNumber.zero();
-        ComplexNumber one = ComplexNumber.one();
-        assertComplexEquals(zero, result[0]);
-        assertComplexEquals(zero, result[1]);
-        assertComplexEquals(zero, result[2]);
-        assertComplexEquals(one, result[3]);
-    }
+	@Test
+	void cnotFlipsTargetWhenControlIsOne() {
+		QuantumCircuit circuit = new QuantumCircuit(2).append(new PauliX(), 1).append(CnotGate.of(), 1, 0);
+		ComplexNumber[] result = circuit.apply();
+		ComplexNumber zero = ComplexNumber.zero();
+		ComplexNumber one = ComplexNumber.one();
+		assertComplexEquals(zero, result[0]);
+		assertComplexEquals(zero, result[1]);
+		assertComplexEquals(zero, result[2]);
+		assertComplexEquals(one, result[3]);
+	}
 
-    @Test
-    void cnotLeavesTargetWhenControlIsZero() {
-        QuantumCircuit circuit = new QuantumCircuit(2)
-                .append(new PauliX(), 0)
-                .append(CnotGate.of(), 1, 0);
-        ComplexNumber[] result = circuit.apply();
-        ComplexNumber zero = ComplexNumber.zero();
-        ComplexNumber one = ComplexNumber.one();
-        assertComplexEquals(zero, result[0]);
-        assertComplexEquals(one, result[1]);
-        assertComplexEquals(zero, result[2]);
-        assertComplexEquals(zero, result[3]);
-    }
+	@Test
+	void cnotLeavesTargetWhenControlIsZero() {
+		QuantumCircuit circuit = new QuantumCircuit(2).append(new PauliX(), 0).append(CnotGate.of(), 1, 0);
+		ComplexNumber[] result = circuit.apply();
+		ComplexNumber zero = ComplexNumber.zero();
+		ComplexNumber one = ComplexNumber.one();
+		assertComplexEquals(zero, result[0]);
+		assertComplexEquals(one, result[1]);
+		assertComplexEquals(zero, result[2]);
+		assertComplexEquals(zero, result[3]);
+	}
 
-    @Test
-    void cnotRejectsSameControlAndTarget() {
-        QuantumCircuit circuit = new QuantumCircuit(2);
-        assertThrows(IllegalArgumentException.class, () -> circuit.append(CnotGate.of(), 0, 0));
-    }
+	@Test
+	void cnotRejectsSameControlAndTarget() {
+		QuantumCircuit circuit = new QuantumCircuit(2);
+		assertThrows(IllegalArgumentException.class, () -> circuit.append(CnotGate.of(), 0, 0));
+	}
 
-    @Test
-    void controlledZAddsPhaseOnDoubleOneState() {
-        QuantumCircuit circuit = new QuantumCircuit(2)
-                .append(new PauliX(), 0)
-                .append(new PauliX(), 1)
-                .appendControlledZ(1, 0);
-        ComplexNumber[] result = circuit.apply();
-        ComplexNumber zero = ComplexNumber.zero();
-        assertComplexEquals(zero, result[0]);
-        assertComplexEquals(zero, result[1]);
-        assertComplexEquals(zero, result[2]);
-        assertComplexEquals(new ComplexNumber(-1.0, 0.0), result[3]);
-    }
+	@Test
+	void controlledZAddsPhaseOnDoubleOneState() {
+		QuantumCircuit circuit = new QuantumCircuit(2).append(new PauliX(), 0).append(new PauliX(), 1)
+				.appendControlledZ(1, 0);
+		ComplexNumber[] result = circuit.apply();
+		ComplexNumber zero = ComplexNumber.zero();
+		assertComplexEquals(zero, result[0]);
+		assertComplexEquals(zero, result[1]);
+		assertComplexEquals(zero, result[2]);
+		assertComplexEquals(new ComplexNumber(-1.0, 0.0), result[3]);
+	}
 
-    @Test
-    void toffoliFlipsTargetWhenBothControlsAreOne() {
-        QuantumCircuit circuit = new QuantumCircuit(3)
-                .append(new PauliX(), 0)
-                .append(new PauliX(), 1)
-                .appendToffoli(0, 1, 2);
-        ComplexNumber[] result = circuit.apply();
-        for (int index = 0; index < result.length; index++) {
-            ComplexNumber expected = index == 7 ? ComplexNumber.one() : ComplexNumber.zero();
-            assertComplexEquals(expected, result[index]);
-        }
-    }
+	@Test
+	void toffoliFlipsTargetWhenBothControlsAreOne() {
+		QuantumCircuit circuit = new QuantumCircuit(3).append(new PauliX(), 0).append(new PauliX(), 1).appendToffoli(0,
+				1, 2);
+		ComplexNumber[] result = circuit.apply();
+		for (int index = 0; index < result.length; index++) {
+			ComplexNumber expected = index == 7 ? ComplexNumber.one() : ComplexNumber.zero();
+			assertComplexEquals(expected, result[index]);
+		}
+	}
 
-    private void assertComplexEquals(ComplexNumber expected, ComplexNumber actual) {
-        assertEquals(expected.real(), actual.real(), EPS, "real parts differ");
-        assertEquals(expected.imag(), actual.imag(), EPS, "imag parts differ");
-    }
+	private void assertComplexEquals(ComplexNumber expected, ComplexNumber actual) {
+		assertEquals(expected.real(), actual.real(), EPS, "real parts differ");
+		assertEquals(expected.imag(), actual.imag(), EPS, "imag parts differ");
+	}
 }

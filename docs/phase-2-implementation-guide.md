@@ -195,4 +195,3 @@ Example JSON (Bell):
 - Use `CircuitParseException` consistently; avoid bare `RuntimeException`.
 - When in doubt, prefer strict validation and clear error messages over
   permissive parsing.
-
