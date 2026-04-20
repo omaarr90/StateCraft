@@ -19,7 +19,7 @@ Phase 1 established the project foundation: a multi-module Gradle layout, GraalV
 - `NoiseModel` supports three attachment modes: gate-type specific, per-qubit, and global-after-every-gate. A builder produces immutable models; the legacy fluent constructor remains for backward compatibility.
 - `NoiseModel.channelsAfter(Operation)` aggregates gate, qubit, and global channels based on the operation's affected qubits.
 - `ErrorChannel` provides factory methods for depolarizing, amplitude damping, phase flip, phase damping, thermal relaxation, and composite channels.
-- `KrausDecomposition` validates operator dimensions and probability normalization and exposes `sampleOperator(SplittableRandom)` for Monte Carlo sampling.
+- `KrausDecomposition` validates operator dimensions and exposes the channel matrices used for Monte Carlo sampling.
 - Thermal relaxation now uses a CPTP Kraus decomposition derived from `T1`, `T2`, and gate time, with completeness checks covered by unit tests.
 
 ### SimulationRequest integration
@@ -55,22 +55,11 @@ for (QuantumCircuit.Operation operation : circuit.operations()) {
 ```
 
 ## Verification and Proof
-The proof is encoded in tests that check deterministic sampling and expected operator selection. The excerpt below shows that a seeded run selects the same Kraus operator in both engine and test code:
+The proof is encoded in tests that check deterministic sampling trajectories, correct channel distributions, and regressions where zero-probability branches must be skipped. The current engine computes branch probabilities from the live state via `||K_i|ψ⟩||²` before sampling:
 
 ```java
-SimulationRequest request = SimulationRequest.zeroState(circuit)
-        .withNoiseModel(model)
-        .withNoiseSeed(seed);
-
-SimulationResult result = engine.simulate(request);
-StateVector finalState = result.finalState().orElseThrow();
-
-KrausDecomposition decomposition = channel.krausDecomposition();
-int operatorIndex = decomposition.sampleOperator(new SplittableRandom(seed));
-KrausOperator operator = decomposition.operators().get(operatorIndex);
-double[] expected = applyOperator(new double[] {0.0, 0.0, 1.0, 0.0}, operator);
-
-assertStateEquals(expected, finalState);
+KrausOperator operator = sampleKrausOperator(state, channel, decomposition, targets, rng);
+applySingleQubitKraus(state, target, operator);
 ```
 
 Sample outputs from local runs show results with and without noise across two cases:
@@ -85,10 +74,10 @@ Case 2: X on |0>
 ```
 
 ## Challenges and Resolutions
-- Deterministic sampling required consistent RNG behavior between engine and tests; resolved by injecting `noiseSeed` and using `SplittableRandom` on both sides.
+- Deterministic sampling required consistent RNG behavior between engine and tests; resolved by injecting `noiseSeed` while deriving Kraus branch weights from the live state on every application.
 - Kraus application changes state norm; a renormalization step was added after each operator to prevent drift.
 - Multi-qubit Kraus operators are not yet supported; explicit exceptions were added to fail fast.
-- Thermal-relaxation completeness drift was resolved by rebuilding the channel with a CPTP-consistent three-operator decomposition and trace-normalized operator weights.
+- Thermal-relaxation completeness drift was resolved by rebuilding the channel with a CPTP-consistent three-operator decomposition that no longer relies on static sampling weights.
 - Noise application had to respect the measurement suffix constraint; noise is only applied to unitary operations.
 
 ## Current Limitations

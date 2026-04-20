@@ -50,13 +50,13 @@ final class AmplitudeDampingChannel implements ErrorChannel {
 
 		// K₀ = [[1, 0], [0, √(1-γ)]]
 		// This operator preserves |0⟩ and partially preserves |1⟩
-		KrausOperator k0 = ErrorChannel.singleQubitOperator(1.0 - gamma, // Probability that no decay occurs
-				ComplexNumber.one(), ComplexNumber.zero(), ComplexNumber.zero(), sqrtOneMinusGamma);
+		KrausOperator k0 = ErrorChannel.singleQubitOperator(ComplexNumber.one(), ComplexNumber.zero(),
+				ComplexNumber.zero(), sqrtOneMinusGamma);
 
 		// K₁ = [[0, √γ], [0, 0]]
 		// This operator causes |1⟩ → |0⟩ transition
-		KrausOperator k1 = ErrorChannel.singleQubitOperator(gamma, // Probability of decay
-				ComplexNumber.zero(), sqrtGamma, ComplexNumber.zero(), ComplexNumber.zero());
+		KrausOperator k1 = ErrorChannel.singleQubitOperator(ComplexNumber.zero(), sqrtGamma, ComplexNumber.zero(),
+				ComplexNumber.zero());
 
 		return new KrausDecomposition(List.of(k0, k1), 1);
 	}

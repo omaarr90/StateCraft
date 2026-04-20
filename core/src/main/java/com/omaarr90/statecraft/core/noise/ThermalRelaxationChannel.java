@@ -78,17 +78,9 @@ final class ThermalRelaxationChannel implements ErrorChannel {
 		ComplexNumber[] k2Matrix = {ComplexNumber.zero(), new ComplexNumber(k2OffDiag, 0.0), ComplexNumber.zero(),
 				ComplexNumber.zero()};
 
-		double w0 = traceWeight(k0Matrix);
-		double w1 = traceWeight(k1Matrix);
-		double w2 = traceWeight(k2Matrix);
-		double sum = w0 + w1 + w2;
-		if (!Double.isFinite(sum) || sum <= 0.0) {
-			throw new IllegalStateException("invalid thermal-relaxation Kraus weights: " + sum);
-		}
-
-		KrausOperator k0 = new KrausOperator(k0Matrix, w0 / sum);
-		KrausOperator k1 = new KrausOperator(k1Matrix, w1 / sum);
-		KrausOperator k2 = new KrausOperator(k2Matrix, w2 / sum);
+		KrausOperator k0 = new KrausOperator(k0Matrix);
+		KrausOperator k1 = new KrausOperator(k1Matrix);
+		KrausOperator k2 = new KrausOperator(k2Matrix);
 		return new KrausDecomposition(List.of(k0, k1, k2), 1);
 	}
 
@@ -103,14 +95,6 @@ final class ThermalRelaxationChannel implements ErrorChannel {
 			return 1.0;
 		}
 		return value;
-	}
-
-	private static double traceWeight(ComplexNumber[] matrix) {
-		double weight = 0.0;
-		for (ComplexNumber element : matrix) {
-			weight += element.magnitudeSquared();
-		}
-		return weight;
 	}
 
 	@Override

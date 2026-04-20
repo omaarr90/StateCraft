@@ -3,7 +3,6 @@ package com.omaarr90.statecraft.core.noise;
 import com.omaarr90.statecraft.core.math.ComplexNumber;
 import java.util.List;
 import java.util.Objects;
-import java.util.SplittableRandom;
 
 /**
  * Kraus decomposition of a quantum channel.
@@ -11,11 +10,12 @@ import java.util.SplittableRandom;
  * A quantum channel E maps density matrices as: E(ρ) = Σ_i K_i ρ K_i† where the
  * Kraus operators satisfy the completeness relation: Σ_i K_i† K_i = I
  * <p>
- * For Monte Carlo simulation, we stochastically select one Kraus operator based
- * on the probabilities and apply it to the state vector.
+ * For Monte Carlo simulation, simulators derive branch probabilities from the
+ * current state and these operators rather than storing static sampling
+ * weights.
  *
  * @param operators
- *            list of Kraus operators with their selection probabilities
+ *            list of Kraus operators
  * @param numQubits
  *            number of qubits this channel acts on
  */
@@ -43,18 +43,12 @@ public record KrausDecomposition(List<KrausOperator> operators, int numQubits) {
 						"all operators must have dimension " + expectedDim + ", got " + op.dimension());
 			}
 		}
-
-		// Verify probabilities sum to 1
-		double sumProb = operators.stream().mapToDouble(KrausOperator::probability).sum();
-		if (Math.abs(sumProb - 1.0) > COMPLETENESS_TOLERANCE) {
-			throw new IllegalArgumentException("operator probabilities must sum to 1.0, got " + sumProb);
-		}
 	}
 
 	/**
 	 * Validates the completeness relation: Σ_i K_i† K_i = I
 	 * <p>
-	 * This is a more expensive check than probability normalization and is
+	 * This is more expensive than the constructor's dimension validation and is
 	 * typically only needed during testing or when constructing custom channels.
 	 *
 	 * @throws IllegalStateException
@@ -89,26 +83,6 @@ public record KrausDecomposition(List<KrausOperator> operators, int numQubits) {
 				}
 			}
 		}
-	}
-
-	/**
-	 * Samples a Kraus operator index based on the operator probabilities.
-	 *
-	 * @param random
-	 *            random number generator
-	 * @return index of the sampled operator in the operators list
-	 */
-	public int sampleOperator(SplittableRandom random) {
-		double r = random.nextDouble();
-		double cumulative = 0.0;
-		for (int i = 0; i < operators.size(); i++) {
-			cumulative += operators.get(i).probability();
-			if (r < cumulative) {
-				return i;
-			}
-		}
-		// Handle rounding errors by returning the last operator
-		return operators.size() - 1;
 	}
 
 	private ComplexNumber[] conjugateTranspose(ComplexNumber[] matrix, int dim) {

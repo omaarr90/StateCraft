@@ -53,11 +53,11 @@ final class PhaseDampingChannel implements ErrorChannel {
 		ComplexNumber sqrtOneMinusLambda = new ComplexNumber(Math.sqrt(1.0 - lambda), 0.0);
 
 		// K₀ = [[1, 0], [0, √(1-λ)]]
-		KrausOperator k0 = ErrorChannel.singleQubitOperator(1.0 - lambda, ComplexNumber.one(), ComplexNumber.zero(),
+		KrausOperator k0 = ErrorChannel.singleQubitOperator(ComplexNumber.one(), ComplexNumber.zero(),
 				ComplexNumber.zero(), sqrtOneMinusLambda);
 
 		// K₁ = [[0, 0], [0, √λ]]
-		KrausOperator k1 = ErrorChannel.singleQubitOperator(lambda, ComplexNumber.zero(), ComplexNumber.zero(),
+		KrausOperator k1 = ErrorChannel.singleQubitOperator(ComplexNumber.zero(), ComplexNumber.zero(),
 				ComplexNumber.zero(), sqrtLambda);
 
 		return new KrausDecomposition(List.of(k0, k1), 1);

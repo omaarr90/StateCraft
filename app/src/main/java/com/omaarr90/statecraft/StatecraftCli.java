@@ -274,8 +274,6 @@ public final class StatecraftCli implements Callable<Integer> {
 	@Command(name = "suite", description = "Execute a hard-coded suite of sample quantum algorithms.")
 	static final class Suite implements Callable<Integer> {
 
-		private static final int DEFAULT_SHOTS = 4_096;
-
 		@Spec
 		private CommandSpec spec;
 
@@ -287,7 +285,7 @@ public final class StatecraftCli implements Callable<Integer> {
 			NoiseOptionsSupport.ResolvedNoiseSpec noiseSpec = noiseOptions.resolve(spec.commandLine());
 			PrintWriter out = spec.commandLine().getOut();
 			SimulatorEngine engine = loadStatevectorEngine();
-			List<AlgorithmSpec> algorithms = List.of(bellPair(), ghzTriplet(), qftOnBasisState());
+			List<AlgorithmSpec> algorithms = AlgorithmSuiteSpecs.all();
 
 			out.println(
 					VERSION + " - executing " + algorithms.size() + " algorithms using engine '" + engine.id() + "'");
@@ -303,6 +301,7 @@ public final class StatecraftCli implements Callable<Integer> {
 			out.println();
 			out.println("=== " + algorithm.name() + " ===");
 			out.println("Description : " + algorithm.description());
+			out.println("Expected    : " + algorithm.expectedOutcome());
 			out.println("Qubits      : " + algorithm.circuit().qubitCount());
 			out.println("Depth       : " + algorithm.circuit().operations().size());
 			out.println("Operations  :");
@@ -325,64 +324,6 @@ public final class StatecraftCli implements Callable<Integer> {
 			for (int index = 0; index < operations.size(); index++) {
 				out.println("  " + (index + 1) + ". " + describeOperation(operations.get(index)));
 			}
-		}
-
-		private static AlgorithmSpec bellPair() {
-			QuantumCircuit circuit = new QuantumCircuit(2).append(new Hadamard(), 0).append(CnotGate.of(), 0, 1);
-			MeasurementInstruction measurement = MeasurementInstruction.countsAll(DEFAULT_SHOTS).withSeed(0xBEEFL);
-			SimulationRequest request = SimulationRequest.zeroState(circuit).withMeasurement(measurement);
-			return new AlgorithmSpec("Bell Pair", "Generates a maximally entangled two-qubit Bell state.", circuit,
-					request);
-		}
-
-		private static AlgorithmSpec ghzTriplet() {
-			QuantumCircuit circuit = new QuantumCircuit(3).append(new Hadamard(), 0).append(CnotGate.of(), 0, 1)
-					.append(CnotGate.of(), 0, 2);
-			MeasurementInstruction measurement = MeasurementInstruction.countsAll(DEFAULT_SHOTS).withSeed(0xFACE5EEDL);
-			SimulationRequest request = SimulationRequest.zeroState(circuit).withMeasurement(measurement);
-			return new AlgorithmSpec("GHZ State",
-					"Prepares the three-qubit Greenberger–Horne–Zeilinger entangled state.", circuit, request);
-		}
-
-		private static AlgorithmSpec qftOnBasisState() {
-			int qubits = 3;
-			QuantumCircuit circuit = buildQftCircuit(qubits);
-			StateVector initial = basisState(qubits, 0b101);
-			MeasurementInstruction measurement = MeasurementInstruction.countsAll(DEFAULT_SHOTS).withSeed(0xF0F0F0F0L);
-			SimulationRequest request = SimulationRequest.withInitialState(circuit, initial)
-					.withMeasurement(measurement);
-			return new AlgorithmSpec("Quantum Fourier Transform (3-qubit)",
-					"Applies the QFT to the computational basis state |101⟩, exposing the frequency-domain amplitudes.",
-					circuit, request);
-		}
-
-		private static QuantumCircuit buildQftCircuit(int qubits) {
-			QuantumCircuit circuit = new QuantumCircuit(qubits);
-			for (int target = 0; target < qubits; target++) {
-				circuit = circuit.append(new Hadamard(), target);
-				for (int control = target + 1; control < qubits; control++) {
-					double angle = Math.PI / (1 << (control - target));
-					circuit = circuit.appendControlledPhase(angle, control, target);
-				}
-			}
-			for (int i = 0; i < qubits / 2; i++) {
-				circuit = circuit.appendSwap(i, qubits - i - 1);
-			}
-			return circuit;
-		}
-
-		private static StateVector basisState(int qubits, int index) {
-			int dimension = 1 << qubits;
-			if (index < 0 || index >= dimension) {
-				throw new IllegalArgumentException("basis index out of range for " + qubits + " qubits: " + index);
-			}
-			double[] data = new double[dimension << 1];
-			data[index << 1] = 1.0;
-			return StateVector.fromArray(qubits, data);
-		}
-
-		private record AlgorithmSpec(String name, String description, QuantumCircuit circuit,
-				SimulationRequest request) {
 		}
 	}
 

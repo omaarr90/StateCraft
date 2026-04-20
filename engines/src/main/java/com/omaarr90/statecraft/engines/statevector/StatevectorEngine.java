@@ -33,6 +33,10 @@ public final class StatevectorEngine implements SimulatorEngine {
 
 	public static final String ID = "statevector";
 	private static final int MAX_QUBITS = 29;
+	private static final double MIN_KRAUS_WEIGHT = 1e-15;
+
+	private record TargetLayout(int[] offsets, int targetMask) {
+	}
 
 	@Override
 	public String id() {
@@ -373,8 +377,7 @@ public final class StatevectorEngine implements SimulatorEngine {
 		int decompositionQubits = decomposition.numQubits();
 		if (decompositionQubits == 1) {
 			for (int target : targets) {
-				int operatorIndex = decomposition.sampleOperator(rng);
-				KrausOperator operator = decomposition.operators().get(operatorIndex);
+				KrausOperator operator = sampleKrausOperator(state, channel, decomposition, new int[]{target}, rng);
 				applySingleQubitKraus(state, target, operator);
 			}
 			return;
@@ -383,8 +386,7 @@ public final class StatevectorEngine implements SimulatorEngine {
 			throw new UnsupportedOperationException("Noise channel target/decomposition mismatch: decomposition qubits="
 					+ decompositionQubits + ", targets=" + targets.length);
 		}
-		int operatorIndex = decomposition.sampleOperator(rng);
-		KrausOperator operator = decomposition.operators().get(operatorIndex);
+		KrausOperator operator = sampleKrausOperator(state, channel, decomposition, targets, rng);
 		applyMultiQubitKraus(state, targets, operator);
 	}
 
@@ -425,6 +427,54 @@ public final class StatevectorEngine implements SimulatorEngine {
 			throw new UnsupportedOperationException("Kraus operator qubit count mismatch: operator="
 					+ operator.numQubits() + ", targets=" + targets.length);
 		}
+		TargetLayout layout = buildTargetLayout(targets);
+		int localDimension = layout.offsets().length;
+		double[] input = new double[localDimension << 1];
+		double[] output = new double[localDimension << 1];
+		int dimension = state.length >> 1;
+
+		for (int basis = 0; basis < dimension; basis++) {
+			if ((basis & layout.targetMask()) != 0) {
+				continue;
+			}
+			loadLocalState(state, basis, layout.offsets(), input);
+			applyKrausMatrix(operator.matrix(), localDimension, input, output);
+			storeLocalState(state, basis, layout.offsets(), output);
+		}
+		renormalizeState(state);
+	}
+
+	private KrausOperator sampleKrausOperator(double[] state, ErrorChannel channel, KrausDecomposition decomposition,
+			int[] targets, SplittableRandom rng) {
+		List<KrausOperator> operators = decomposition.operators();
+		double[] weights = new double[operators.size()];
+		TargetLayout layout = buildTargetLayout(targets);
+		double[] input = new double[layout.offsets().length << 1];
+		double[] output = new double[input.length];
+		double totalWeight = 0.0;
+
+		for (int index = 0; index < operators.size(); index++) {
+			KrausOperator operator = operators.get(index);
+			double branchWeight = computeBranchWeight(state, operator, layout, input, output);
+			if (!Double.isFinite(branchWeight) || branchWeight < 0.0) {
+				throw new IllegalStateException(
+						"invalid Kraus branch weight for channel " + channel + " on targets " + Arrays.toString(targets)
+								+ ": weights=" + Arrays.toString(weights) + ", branch=" + branchWeight);
+			}
+			weights[index] = branchWeight;
+			totalWeight += branchWeight;
+		}
+
+		if (!Double.isFinite(totalWeight) || totalWeight <= MIN_KRAUS_WEIGHT) {
+			throw new IllegalStateException("invalid Kraus branch weights for channel " + channel + " on targets "
+					+ Arrays.toString(targets) + ": total=" + totalWeight + ", weights=" + Arrays.toString(weights));
+		}
+
+		int operatorIndex = sampleWeightedIndex(weights, rng.nextDouble(totalWeight));
+		return operators.get(operatorIndex);
+	}
+
+	private static TargetLayout buildTargetLayout(int[] targets) {
 		int localDimension = 1 << targets.length;
 		int[] offsets = new int[localDimension];
 		int targetMask = 0;
@@ -439,52 +489,93 @@ public final class StatevectorEngine implements SimulatorEngine {
 			}
 			offsets[localIndex] = offset;
 		}
+		return new TargetLayout(offsets, targetMask);
+	}
 
-		ComplexNumber[] matrix = operator.matrix();
-		double[] input = new double[localDimension << 1];
-		double[] output = new double[localDimension << 1];
+	private static double computeBranchWeight(double[] state, KrausOperator operator, TargetLayout layout,
+			double[] input, double[] output) {
+		if (operator.numQubits() != Integer.numberOfTrailingZeros(layout.offsets().length)) {
+			throw new UnsupportedOperationException("Kraus operator qubit count mismatch: operator="
+					+ operator.numQubits() + ", targets=" + Integer.numberOfTrailingZeros(layout.offsets().length));
+		}
+		int localDimension = layout.offsets().length;
 		int dimension = state.length >> 1;
+		double weight = 0.0;
 
 		for (int basis = 0; basis < dimension; basis++) {
-			if ((basis & targetMask) != 0) {
+			if ((basis & layout.targetMask()) != 0) {
 				continue;
 			}
+			loadLocalState(state, basis, layout.offsets(), input);
+			applyKrausMatrix(operator.matrix(), localDimension, input, output);
+			weight += blockNormSquared(output);
+		}
+		return weight;
+	}
+
+	private static void loadLocalState(double[] state, int basis, int[] offsets, double[] input) {
+		for (int col = 0; col < offsets.length; col++) {
+			int sourceIndex = (basis | offsets[col]) << 1;
+			int sourceBase = col << 1;
+			input[sourceBase] = state[sourceIndex];
+			input[sourceBase + 1] = state[sourceIndex + 1];
+		}
+	}
+
+	private static void storeLocalState(double[] state, int basis, int[] offsets, double[] output) {
+		for (int row = 0; row < offsets.length; row++) {
+			int destinationIndex = (basis | offsets[row]) << 1;
+			int sourceBase = row << 1;
+			state[destinationIndex] = output[sourceBase];
+			state[destinationIndex + 1] = output[sourceBase + 1];
+		}
+	}
+
+	private static void applyKrausMatrix(ComplexNumber[] matrix, int localDimension, double[] input, double[] output) {
+		for (int row = 0; row < localDimension; row++) {
+			double sumReal = 0.0;
+			double sumImag = 0.0;
+			int matrixRow = row * localDimension;
 			for (int col = 0; col < localDimension; col++) {
-				int sourceIndex = (basis | offsets[col]) << 1;
+				ComplexNumber coeff = matrix[matrixRow + col];
 				int sourceBase = col << 1;
-				input[sourceBase] = state[sourceIndex];
-				input[sourceBase + 1] = state[sourceIndex + 1];
+				double ampReal = input[sourceBase];
+				double ampImag = input[sourceBase + 1];
+				sumReal += coeff.real() * ampReal - coeff.imag() * ampImag;
+				sumImag += coeff.real() * ampImag + coeff.imag() * ampReal;
 			}
-			for (int row = 0; row < localDimension; row++) {
-				double sumReal = 0.0;
-				double sumImag = 0.0;
-				int matrixRow = row * localDimension;
-				for (int col = 0; col < localDimension; col++) {
-					ComplexNumber coeff = matrix[matrixRow + col];
-					int sourceBase = col << 1;
-					double ampReal = input[sourceBase];
-					double ampImag = input[sourceBase + 1];
-					sumReal += coeff.real() * ampReal - coeff.imag() * ampImag;
-					sumImag += coeff.real() * ampImag + coeff.imag() * ampReal;
-				}
-				int targetBase = row << 1;
-				output[targetBase] = sumReal;
-				output[targetBase + 1] = sumImag;
-			}
-			for (int row = 0; row < localDimension; row++) {
-				int destinationIndex = (basis | offsets[row]) << 1;
-				int sourceBase = row << 1;
-				state[destinationIndex] = output[sourceBase];
-				state[destinationIndex + 1] = output[sourceBase + 1];
+			int targetBase = row << 1;
+			output[targetBase] = sumReal;
+			output[targetBase + 1] = sumImag;
+		}
+	}
+
+	private static double blockNormSquared(double[] stateBlock) {
+		double normSq = 0.0;
+		for (int index = 0; index < stateBlock.length; index += 2) {
+			double real = stateBlock[index];
+			double imag = stateBlock[index + 1];
+			normSq += real * real + imag * imag;
+		}
+		return normSq;
+	}
+
+	private static int sampleWeightedIndex(double[] weights, double value) {
+		double cumulative = 0.0;
+		for (int index = 0; index < weights.length; index++) {
+			cumulative += weights[index];
+			if (value < cumulative) {
+				return index;
 			}
 		}
-		renormalizeState(state);
+		return weights.length - 1;
 	}
 
 	private static void renormalizeState(double[] state) {
 		double normSq = ComplexArrays.norm2Sq(state);
 		if (!Double.isFinite(normSq) || normSq == 0.0) {
-			throw new IllegalStateException("state collapsed to invalid norm after noise application");
+			throw new IllegalStateException(
+					"state collapsed to invalid norm after Kraus application: normSq=" + normSq);
 		}
 		if (Math.abs(normSq - 1.0) > 1e-12) {
 			double scale = 1.0 / Math.sqrt(normSq);

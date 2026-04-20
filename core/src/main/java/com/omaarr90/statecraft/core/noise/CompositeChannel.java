@@ -11,7 +11,7 @@ import java.util.Set;
  * This allows building complex noise models from simpler components. Note: The
  * Kraus decomposition of a composite channel is the tensor product of the
  * individual decompositions, but for Monte Carlo simulation we apply each
- * channel's sampled operator sequentially.
+ * channel's state-dependent Kraus branch sequentially.
  * <p>
  * Current limitation: All channels must act on the same set of qubits, or this
  * implementation will union the affected qubits.

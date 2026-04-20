@@ -12,10 +12,10 @@ import java.util.Objects;
  * <p>
  * Kraus operators:
  * <ul>
- * <li>K₀ = √(1-p) · I (probability: 1-p)</li>
- * <li>K₁ = √(p/3) · X (probability: p/3)</li>
- * <li>K₂ = √(p/3) · Y (probability: p/3)</li>
- * <li>K₃ = √(p/3) · Z (probability: p/3)</li>
+ * <li>K₀ = √(1-p) · I</li>
+ * <li>K₁ = √(p/3) · X</li>
+ * <li>K₂ = √(p/3) · Y</li>
+ * <li>K₃ = √(p/3) · Z</li>
  * </ul>
  */
 final class DepolarizingChannel implements ErrorChannel {
@@ -54,23 +54,23 @@ final class DepolarizingChannel implements ErrorChannel {
 		ComplexNumber sqrtPEach = new ComplexNumber(Math.sqrt(pEach), 0.0);
 
 		// K₀ = √(1-p) · I
-		KrausOperator k0 = ErrorChannel.singleQubitOperator(pNone, sqrtPNone, ComplexNumber.zero(),
-				ComplexNumber.zero(), sqrtPNone);
+		KrausOperator k0 = ErrorChannel.singleQubitOperator(sqrtPNone, ComplexNumber.zero(), ComplexNumber.zero(),
+				sqrtPNone);
 
 		// K₁ = √(p/3) · X
-		KrausOperator k1 = ErrorChannel.singleQubitOperator(pEach, ComplexNumber.zero(), sqrtPEach, sqrtPEach,
+		KrausOperator k1 = ErrorChannel.singleQubitOperator(ComplexNumber.zero(), sqrtPEach, sqrtPEach,
 				ComplexNumber.zero());
 
 		// K₂ = √(p/3) · Y
 		ComplexNumber sqrtPEachI = new ComplexNumber(0.0, Math.sqrt(pEach));
 		ComplexNumber sqrtPEachNegI = new ComplexNumber(0.0, -Math.sqrt(pEach));
-		KrausOperator k2 = ErrorChannel.singleQubitOperator(pEach, ComplexNumber.zero(), sqrtPEachNegI, sqrtPEachI,
+		KrausOperator k2 = ErrorChannel.singleQubitOperator(ComplexNumber.zero(), sqrtPEachNegI, sqrtPEachI,
 				ComplexNumber.zero());
 
 		// K₃ = √(p/3) · Z
 		ComplexNumber sqrtPEachNeg = new ComplexNumber(-Math.sqrt(pEach), 0.0);
-		KrausOperator k3 = ErrorChannel.singleQubitOperator(pEach, sqrtPEach, ComplexNumber.zero(),
-				ComplexNumber.zero(), sqrtPEachNeg);
+		KrausOperator k3 = ErrorChannel.singleQubitOperator(sqrtPEach, ComplexNumber.zero(), ComplexNumber.zero(),
+				sqrtPEachNeg);
 
 		return new KrausDecomposition(List.of(k0, k1, k2, k3), 1);
 	}

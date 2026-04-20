@@ -93,8 +93,9 @@ The core noise layer provides:
 - scheduling by gate type, idle qubit, and global application
 
 Only the `statevector` engine executes noisy simulations today. Noise seeds are supported through
-`SimulationRequest.withNoiseSeed(...)` and through the CLI. A seed without any noise channels is treated as invalid,
-including seed-only JSON noise configs.
+`SimulationRequest.withNoiseSeed(...)` and through the CLI. Kraus branches are sampled from the live state rather than
+from fixed per-operator weights. A seed without any noise channels is treated as invalid, including seed-only JSON
+noise configs.
 
 ## CLI
 
@@ -104,6 +105,8 @@ The `statecraft` CLI exposes:
 - `demo`
 - `run`
 - `suite`
+
+`suite` runs the built-in Bell, GHZ, Deutsch-Jozsa, Bernstein-Vazirani, QFT, and 1-bit phase-estimation examples.
 
 `demo` and `run` support:
 

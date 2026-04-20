@@ -10,7 +10,8 @@ import com.omaarr90.statecraft.core.math.ComplexNumber;
  * thermal relaxation (T₁/T₂ decoherence).
  * <p>
  * Implementations provide a Kraus decomposition suitable for Monte Carlo
- * simulation with pure state vectors.
+ * simulation with pure state vectors, where branch probabilities are computed
+ * from the current state during simulation.
  */
 public sealed interface ErrorChannel permits DepolarizingChannel, AmplitudeDampingChannel, PhaseFlipChannel,
 		PhaseDampingChannel, ThermalRelaxationChannel, CompositeChannel {
@@ -128,10 +129,10 @@ public sealed interface ErrorChannel permits DepolarizingChannel, AmplitudeDampi
 	/**
 	 * Helper to create a single-qubit Kraus operator.
 	 */
-	static KrausOperator singleQubitOperator(double probability, ComplexNumber... elements) {
+	static KrausOperator singleQubitOperator(ComplexNumber... elements) {
 		if (elements.length != 4) {
 			throw new IllegalArgumentException("single-qubit operator requires exactly 4 elements");
 		}
-		return new KrausOperator(elements, probability);
+		return new KrausOperator(elements);
 	}
 }

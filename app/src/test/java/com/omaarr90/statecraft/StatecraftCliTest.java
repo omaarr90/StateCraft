@@ -192,6 +192,35 @@ class StatecraftCliTest {
 	}
 
 	@Test
+	void suitePrintsExpandedAlgorithmSet() {
+		StringWriter out = new StringWriter();
+		CommandLine cli = new CommandLine(new StatecraftCli());
+		cli.setOut(new PrintWriter(out, true));
+		cli.setErr(new PrintWriter(new StringWriter(), true));
+
+		int exitCode = cli.execute("suite");
+		assertEquals(CommandLine.ExitCode.OK, exitCode);
+
+		String output = out.toString();
+		assertTrue(output.contains("executing 7 algorithms"));
+		assertTrue(output.contains("=== Bell Pair ==="));
+		assertTrue(output.contains("=== GHZ State ==="));
+		assertTrue(output.contains("=== Deutsch-Jozsa (Constant) ==="));
+		assertTrue(output.contains("=== Deutsch-Jozsa (Balanced) ==="));
+		assertTrue(output.contains("=== Bernstein-Vazirani ==="));
+		assertTrue(output.contains("=== Quantum Fourier Transform (3-qubit) ==="));
+		assertTrue(output.contains("=== Quantum Phase Estimation (1-bit) ==="));
+		assertTrue(output.contains("Expected    : Shot histogram is exactly 000 on q2 q1 q0."));
+		assertTrue(output.contains("Expected    : Shot histogram is exactly 001 on q2 q1 q0."));
+		assertTrue(output.contains("Expected    : Shot histogram is exactly 1011 on q3 q2 q1 q0."));
+		assertTrue(output.contains("Expected    : Shot histogram is exactly 1 on q0."));
+		assertTrue(output.contains("  000 : 4096"));
+		assertTrue(output.contains("  001 : 4096"));
+		assertTrue(output.contains("  1011 : 4096"));
+		assertTrue(output.contains("  1 : 4096"));
+	}
+
+	@Test
 	void suiteAcceptsNoiseFlags() {
 		StringWriter out = new StringWriter();
 		CommandLine cli = new CommandLine(new StatecraftCli());
@@ -202,7 +231,7 @@ class StatecraftCliTest {
 		assertEquals(CommandLine.ExitCode.OK, exitCode);
 
 		String output = out.toString();
-		assertTrue(output.contains("executing 3 algorithms"));
+		assertTrue(output.contains("executing 7 algorithms"));
 		assertTrue(output.contains("=== Bell Pair ==="));
 	}
 }

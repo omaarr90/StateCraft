@@ -1,12 +1,13 @@
 package com.omaarr90.statecraft.core.noise;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.omaarr90.statecraft.core.math.ComplexNumber;
-import java.util.SplittableRandom;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class ErrorChannelTest {
@@ -100,10 +101,10 @@ class ErrorChannelTest {
 	}
 
 	@Test
-	void thermalRelaxationAssignsNonZeroDecaySamplingWeight() {
+	void thermalRelaxationIncludesNonZeroDecayOperator() {
 		ErrorChannel channel = ErrorChannel.thermalRelaxation(50e-6, 30e-6, 5e-3, 0);
 		KrausDecomposition decomposition = channel.krausDecomposition();
-		assertTrue(decomposition.operators().get(2).probability() > 0.1);
+		assertTrue(decomposition.operators().get(2).matrix()[1].magnitudeSquared() > 0.1);
 	}
 
 	@Test
@@ -125,24 +126,14 @@ class ErrorChannelTest {
 	}
 
 	@Test
-	void krausDecompositionSamplesCorrectly() {
-		ErrorChannel channel = ErrorChannel.depolarizing(0.6, 0);
-		KrausDecomposition decomp = channel.krausDecomposition();
+	void krausDecompositionAllowsStateDependentSamplingOperators() {
+		KrausOperator identity = ErrorChannel.singleQubitOperator(ComplexNumber.one(), ComplexNumber.zero(),
+				ComplexNumber.zero(), ComplexNumber.one());
+		KrausOperator zero = ErrorChannel.singleQubitOperator(ComplexNumber.zero(), ComplexNumber.zero(),
+				ComplexNumber.zero(), ComplexNumber.zero());
 
-		int numSamples = 10000;
-		int[] counts = new int[4];
-		SplittableRandom random = new SplittableRandom(42);
-
-		for (int i = 0; i < numSamples; i++) {
-			int idx = decomp.sampleOperator(random);
-			counts[idx]++;
-		}
-
-		double[] expectedProbs = {0.4, 0.2, 0.2, 0.2};
-		for (int i = 0; i < 4; i++) {
-			double actual = (double) counts[i] / numSamples;
-			assertEquals(expectedProbs[i], actual, 0.02, "Operator " + i + " probability mismatch");
-		}
+		KrausDecomposition decomposition = assertDoesNotThrow(() -> new KrausDecomposition(List.of(identity, zero), 1));
+		assertDoesNotThrow(decomposition::validateCompleteness);
 	}
 
 	@Test
@@ -190,30 +181,20 @@ class ErrorChannelTest {
 
 	@Test
 	void krausDecompositionRejectsInconsistentDimensions() {
-		KrausOperator op1 = ErrorChannel.singleQubitOperator(0.5, ComplexNumber.one(), ComplexNumber.zero(),
+		KrausOperator op1 = ErrorChannel.singleQubitOperator(ComplexNumber.one(), ComplexNumber.zero(),
 				ComplexNumber.zero(), ComplexNumber.one());
 		ComplexNumber[] matrix2 = new ComplexNumber[16];
 		for (int i = 0; i < 16; i++) {
 			matrix2[i] = ComplexNumber.zero();
 		}
-		KrausOperator op2 = new KrausOperator(matrix2, 0.5);
-
-		assertThrows(IllegalArgumentException.class, () -> new KrausDecomposition(java.util.List.of(op1, op2), 1));
-	}
-
-	@Test
-	void krausDecompositionRejectsBadProbabilitySum() {
-		KrausOperator op1 = ErrorChannel.singleQubitOperator(0.3, ComplexNumber.one(), ComplexNumber.zero(),
-				ComplexNumber.zero(), ComplexNumber.one());
-		KrausOperator op2 = ErrorChannel.singleQubitOperator(0.3, ComplexNumber.one(), ComplexNumber.zero(),
-				ComplexNumber.zero(), ComplexNumber.one());
+		KrausOperator op2 = new KrausOperator(matrix2);
 
 		assertThrows(IllegalArgumentException.class, () -> new KrausDecomposition(java.util.List.of(op1, op2), 1));
 	}
 
 	@Test
 	void krausOperatorComputesDimension() {
-		KrausOperator op = ErrorChannel.singleQubitOperator(1.0, ComplexNumber.one(), ComplexNumber.zero(),
+		KrausOperator op = ErrorChannel.singleQubitOperator(ComplexNumber.one(), ComplexNumber.zero(),
 				ComplexNumber.zero(), ComplexNumber.one());
 		assertEquals(2, op.dimension());
 		assertEquals(1, op.numQubits());
@@ -225,15 +206,7 @@ class ErrorChannelTest {
 		for (int i = 0; i < 5; i++) {
 			matrix[i] = ComplexNumber.zero();
 		}
-		assertThrows(IllegalArgumentException.class, () -> new KrausOperator(matrix, 0.5));
-	}
-
-	@Test
-	void krausOperatorRejectsBadProbability() {
-		ComplexNumber[] matrix = {ComplexNumber.one(), ComplexNumber.zero(), ComplexNumber.zero(), ComplexNumber.one()};
-		assertThrows(IllegalArgumentException.class, () -> new KrausOperator(matrix, -0.1));
-		assertThrows(IllegalArgumentException.class, () -> new KrausOperator(matrix, 1.5));
-		assertThrows(IllegalArgumentException.class, () -> new KrausOperator(matrix, Double.NaN));
+		assertThrows(IllegalArgumentException.class, () -> new KrausOperator(matrix));
 	}
 
 	private static ComplexNumber[] applyChannel(KrausDecomposition decomposition, ComplexNumber[] density) {

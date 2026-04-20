@@ -64,7 +64,8 @@ The core noise model supports:
 - gate-type, idle-qubit, and global scheduling through `NoiseModel`
 
 `StatevectorEngine` applies scheduled noise after each unitary gate. Noise sampling can be made deterministic with a
-noise seed. A noise seed without any configured noise channels is rejected, including seed-only JSON noise configs.
+noise seed, and Kraus branches are sampled from the current state instead of fixed per-operator weights. A noise seed
+without any configured noise channels is rejected, including seed-only JSON noise configs.
 
 ## CLI
 
@@ -73,7 +74,7 @@ The CLI entrypoint is `statecraft` with four subcommands:
 - `statecraft engines`: list discovered engine ids
 - `statecraft demo`: run the built-in Bell-state demo
 - `statecraft run --input <file>`: parse and simulate a JSON or QASM circuit
-- `statecraft suite`: execute the built-in Bell/GHZ/QFT sample suite
+- `statecraft suite`: execute the built-in Bell, GHZ, Deutsch-Jozsa, Bernstein-Vazirani, QFT, and 1-bit phase-estimation sample suite
 
 `demo` and `run` support measurement flags:
 

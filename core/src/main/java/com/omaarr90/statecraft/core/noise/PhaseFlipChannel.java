@@ -15,8 +15,8 @@ import java.util.Objects;
  * <p>
  * Kraus operators:
  * <ul>
- * <li>K₀ = √(1-p) · I (probability: 1-p)</li>
- * <li>K₁ = √p · Z (probability: p)</li>
+ * <li>K₀ = √(1-p) · I</li>
+ * <li>K₁ = √p · Z</li>
  * </ul>
  */
 final class PhaseFlipChannel implements ErrorChannel {
@@ -52,13 +52,13 @@ final class PhaseFlipChannel implements ErrorChannel {
 		ComplexNumber sqrtOneMinusP = new ComplexNumber(Math.sqrt(1.0 - probability), 0.0);
 
 		// K₀ = √(1-p) · I
-		KrausOperator k0 = ErrorChannel.singleQubitOperator(1.0 - probability, sqrtOneMinusP, ComplexNumber.zero(),
-				ComplexNumber.zero(), sqrtOneMinusP);
+		KrausOperator k0 = ErrorChannel.singleQubitOperator(sqrtOneMinusP, ComplexNumber.zero(), ComplexNumber.zero(),
+				sqrtOneMinusP);
 
 		// K₁ = √p · Z = √p · [[1, 0], [0, -1]]
 		ComplexNumber sqrtPNeg = new ComplexNumber(-Math.sqrt(probability), 0.0);
-		KrausOperator k1 = ErrorChannel.singleQubitOperator(probability, sqrtP, ComplexNumber.zero(),
-				ComplexNumber.zero(), sqrtPNeg);
+		KrausOperator k1 = ErrorChannel.singleQubitOperator(sqrtP, ComplexNumber.zero(), ComplexNumber.zero(),
+				sqrtPNeg);
 
 		return new KrausDecomposition(List.of(k0, k1), 1);
 	}
