@@ -9,6 +9,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.omaarr90.statecraft.core.math.ComplexNumber;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class ErrorChannelTest {
 
@@ -59,13 +61,14 @@ class ErrorChannelTest {
 		decomp.validateCompleteness();
 	}
 
-	@Test
-	void thermalRelaxationChannelValidatesCompleteness() {
-		double t1 = 50e-6;
-		double t2 = 30e-6;
-		double gateTime = 100e-9;
+	@ParameterizedTest(name = "{0}")
+	@CsvSource({"ordinary gate, 5.0e-5, 3.0e-5, 1.0e-7", "zero gate, 5.0e-5, 3.0e-5, 0.0",
+			"T2 equals two T1, 5.0e-5, 1.0e-4, 1.0e-7", "strong dephasing, 5.0e-5, 1.0e-6, 1.0e-7",
+			"very small gate, 5.0e-5, 3.0e-5, 1.0e-15", "large gate, 5.0e-5, 3.0e-5, 5.0e-3"})
+	void thermalRelaxationChannelValidatesCompleteness(String label, double t1, double t2, double gateTime) {
 		ErrorChannel channel = ErrorChannel.thermalRelaxation(t1, t2, gateTime, 0);
 		KrausDecomposition decomp = channel.krausDecomposition();
+		assertFiniteKrausEntries(decomp);
 		decomp.validateCompleteness();
 	}
 
@@ -110,6 +113,7 @@ class ErrorChannelTest {
 	@Test
 	void thermalRelaxationChannelRejectsInvalidT1() {
 		assertThrows(IllegalArgumentException.class, () -> ErrorChannel.thermalRelaxation(-1.0, 1.0, 0.1, 0));
+		assertThrows(IllegalArgumentException.class, () -> ErrorChannel.thermalRelaxation(Double.NaN, 1.0, 0.1, 0));
 		assertThrows(IllegalArgumentException.class,
 				() -> ErrorChannel.thermalRelaxation(Double.POSITIVE_INFINITY, 1.0, 0.1, 0));
 	}
@@ -117,12 +121,18 @@ class ErrorChannelTest {
 	@Test
 	void thermalRelaxationChannelRejectsInvalidT2() {
 		assertThrows(IllegalArgumentException.class, () -> ErrorChannel.thermalRelaxation(1.0, -1.0, 0.1, 0));
+		assertThrows(IllegalArgumentException.class, () -> ErrorChannel.thermalRelaxation(1.0, Double.NaN, 0.1, 0));
+		assertThrows(IllegalArgumentException.class,
+				() -> ErrorChannel.thermalRelaxation(1.0, Double.POSITIVE_INFINITY, 0.1, 0));
 		assertThrows(IllegalArgumentException.class, () -> ErrorChannel.thermalRelaxation(1.0, 3.0, 0.1, 0));
 	}
 
 	@Test
 	void thermalRelaxationChannelRejectsNegativeGateTime() {
 		assertThrows(IllegalArgumentException.class, () -> ErrorChannel.thermalRelaxation(1.0, 0.5, -0.1, 0));
+		assertThrows(IllegalArgumentException.class, () -> ErrorChannel.thermalRelaxation(1.0, 0.5, Double.NaN, 0));
+		assertThrows(IllegalArgumentException.class,
+				() -> ErrorChannel.thermalRelaxation(1.0, 0.5, Double.POSITIVE_INFINITY, 0));
 	}
 
 	@Test
@@ -225,6 +235,15 @@ class ErrorChannelTest {
 			}
 		}
 		return sum;
+	}
+
+	private static void assertFiniteKrausEntries(KrausDecomposition decomposition) {
+		for (KrausOperator operator : decomposition.operators()) {
+			for (ComplexNumber entry : operator.matrix()) {
+				assertTrue(Double.isFinite(entry.real()), "Kraus entry has non-finite real part: " + entry);
+				assertTrue(Double.isFinite(entry.imag()), "Kraus entry has non-finite imaginary part: " + entry);
+			}
+		}
 	}
 
 	private static ComplexNumber[] conjugateTranspose(ComplexNumber[] matrix, int dimension) {

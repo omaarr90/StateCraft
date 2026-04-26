@@ -145,6 +145,34 @@ class NoiseOptionsSupportTest {
 	}
 
 	@Test
+	void thermalFlagsRejectUnphysicalT2() {
+		CommandLine.ParameterException error = assertThrows(CommandLine.ParameterException.class, () -> resolve(
+				new NoiseOptionsSupport.NoiseOptionsInput(null, null, null, null, null, null, 5e-5, 2e-4, 1e-7)));
+
+		assertTrue(error.getMessage().contains("requires t2 <= 2 * t1"));
+	}
+
+	@Test
+	void thermalConfigRejectsUnphysicalT2() throws IOException {
+		Path config = writeTemp("""
+				{
+				  "global": {
+				    "thermalRelaxation": {
+				      "t1": 0.00005,
+				      "t2": 0.0002,
+				      "gateTime": 0.0000001
+				    }
+				  }
+				}
+				""");
+
+		CommandLine.ParameterException error = assertThrows(CommandLine.ParameterException.class, () -> resolve(
+				new NoiseOptionsSupport.NoiseOptionsInput(config, null, null, null, null, null, null, null, null)));
+
+		assertTrue(error.getMessage().contains("requires t2 <= 2 * t1"));
+	}
+
+	@Test
 	void noiseSeedWithoutChannelsIsRejected() {
 		CommandLine.ParameterException error = assertThrows(CommandLine.ParameterException.class, () -> resolve(
 				new NoiseOptionsSupport.NoiseOptionsInput(null, 123L, null, null, null, null, null, null, null)));

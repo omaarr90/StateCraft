@@ -193,6 +193,19 @@ class StatevectorNoiseTest {
 		assertEquals(Map.of(0, 16), histogram.counts());
 	}
 
+	@Test
+	void thermalRelaxationDrivesExcitedStateTowardGroundState() {
+		NoiseModel model = NoiseModel.builder().afterAllGates(ErrorChannel.thermalRelaxation(1e-6, 2e-6, 1e-3, 0))
+				.build();
+		QuantumCircuit circuit = new QuantumCircuit(1).append(new PauliX(), 0);
+		SimulationRequest request = SimulationRequest.zeroState(circuit).withNoiseModel(model).withNoiseSeed(9L);
+
+		StateVector finalState = new StatevectorEngine().simulate(request).finalState().orElseThrow();
+
+		assertStateEquals(new double[]{1.0, 0.0, 0.0, 0.0}, finalState);
+		assertNormalized(finalState);
+	}
+
 	private static void assertStateEquals(double[] expected, StateVector actual) {
 		assertArrayEquals(expected, actual.data(), EPS);
 	}

@@ -14,6 +14,9 @@ import java.util.Objects;
  */
 final class ThermalRelaxationChannel implements ErrorChannel {
 
+	private static final double BOUNDED_FACTOR_TOLERANCE = 1e-12;
+	private static final double RATE_TOLERANCE = 1e-12;
+
 	private final double t1;
 	private final double t2;
 	private final double gateTime;
@@ -56,25 +59,36 @@ final class ThermalRelaxationChannel implements ErrorChannel {
 	}
 
 	private KrausDecomposition buildKrausDecomposition() {
-		double a = Math.exp(-gateTime / t1);
-		double b = Math.exp(-gateTime / t2);
-		double sqrtA = Math.sqrt(Math.max(0.0, a));
-		double lambda = sqrtA == 0.0 ? 1.0 : clampUnit(b / sqrtA);
+		double relaxationSurvival;
+		double pureDephasingFactor;
+		if (gateTime == 0.0) {
+			relaxationSurvival = 1.0;
+			pureDephasingFactor = 1.0;
+		} else {
+			relaxationSurvival = boundedFactor("relaxation survival", Math.exp(-gateTime / t1));
+			double inverseT2 = 1.0 / t2;
+			double halfInverseT1 = 1.0 / (2.0 * t1);
+			double pureDephasingRate = nonNegativeRate("pure dephasing rate", inverseT2 - halfInverseT1,
+					Math.abs(inverseT2) + Math.abs(halfInverseT1));
+			pureDephasingFactor = boundedFactor("pure dephasing factor", Math.exp(-gateTime * pureDephasingRate));
+		}
+		double decayProbability = boundedFactor("decay probability", 1.0 - relaxationSurvival);
+		double sqrtSurvival = Math.sqrt(relaxationSurvival);
 
-		double plus = 0.5 * (1.0 + lambda);
-		double minus = 0.5 * (1.0 - lambda);
+		double plus = boundedFactor("thermal plus factor", 0.5 * (1.0 + pureDephasingFactor));
+		double minus = boundedFactor("thermal minus factor", 0.5 * (1.0 - pureDephasingFactor));
 
 		double k0Diag0 = Math.sqrt(plus);
-		double k0Diag1 = sqrtA * k0Diag0;
+		double k0Diag1 = sqrtSurvival * k0Diag0;
 		ComplexNumber[] k0Matrix = {new ComplexNumber(k0Diag0, 0.0), ComplexNumber.zero(), ComplexNumber.zero(),
 				new ComplexNumber(k0Diag1, 0.0)};
 
 		double k1Diag0 = Math.sqrt(minus);
-		double k1Diag1 = sqrtA * k1Diag0;
+		double k1Diag1 = sqrtSurvival * k1Diag0;
 		ComplexNumber[] k1Matrix = {new ComplexNumber(k1Diag0, 0.0), ComplexNumber.zero(), ComplexNumber.zero(),
 				new ComplexNumber(-k1Diag1, 0.0)};
 
-		double k2OffDiag = Math.sqrt(Math.max(0.0, 1.0 - a));
+		double k2OffDiag = Math.sqrt(decayProbability);
 		ComplexNumber[] k2Matrix = {ComplexNumber.zero(), new ComplexNumber(k2OffDiag, 0.0), ComplexNumber.zero(),
 				ComplexNumber.zero()};
 
@@ -84,15 +98,35 @@ final class ThermalRelaxationChannel implements ErrorChannel {
 		return new KrausDecomposition(List.of(k0, k1, k2), 1);
 	}
 
-	private static double clampUnit(double value) {
+	private static double nonNegativeRate(String name, double value, double scale) {
 		if (!Double.isFinite(value)) {
-			return value > 0.0 ? 1.0 : 0.0;
+			throw new IllegalStateException(name + " must be finite, got " + value);
 		}
 		if (value < 0.0) {
-			return 0.0;
+			double tolerance = RATE_TOLERANCE * Math.max(1.0, scale);
+			if (value >= -tolerance) {
+				return 0.0;
+			}
+			throw new IllegalStateException(name + " must be non-negative, got " + value);
+		}
+		return value;
+	}
+
+	private static double boundedFactor(String name, double value) {
+		if (!Double.isFinite(value)) {
+			throw new IllegalStateException(name + " must be finite, got " + value);
+		}
+		if (value < 0.0) {
+			if (value >= -BOUNDED_FACTOR_TOLERANCE) {
+				return 0.0;
+			}
+			throw new IllegalStateException(name + " must be in [0,1], got " + value);
 		}
 		if (value > 1.0) {
-			return 1.0;
+			if (value <= 1.0 + BOUNDED_FACTOR_TOLERANCE) {
+				return 1.0;
+			}
+			throw new IllegalStateException(name + " must be in [0,1], got " + value);
 		}
 		return value;
 	}
