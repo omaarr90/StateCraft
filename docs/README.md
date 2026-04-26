@@ -12,7 +12,7 @@ StateCraft is a multi-module Java quantum circuit simulator with three engines:
 
 `QuantumCircuit` supports:
 
-- single-qubit gates: `h`, `x`, `y`, `z`, `s`, `sdg`
+- single-qubit gates: `h`, `x`, `y`, `z`, `s`, `sdg`, plus generic matrix-backed single-qubit gates
 - two-qubit operations: `cx`, controlled phase (`cp`), arbitrary diagonal two-qubit gates, and `swap`
 - controlled-Pauli builders: `appendControlledX/Y/Z(...)`
 - multi-control builders: `appendToffoli(...)` and `appendMultiControl(...)`
@@ -21,15 +21,17 @@ StateCraft is a multi-module Java quantum circuit simulator with three engines:
 The JSON parser accepts `h`, `x`, `y`, `z`, `s`, `sdg`, `cx`, `cy`, `cz`, `swap`, `cp`, `ccx`, `mcx`, `mcy`,
 `mcz`, `measure`, and `barrier`.
 
-The OpenQASM parser accepts an `OPENQASM 3.0;` subset with:
+The OpenQASM parser accepts common `OPENQASM 2.0;` and `OPENQASM 3.0;` subsets with:
 
-- `qubit[n] q;` and optional `bit[n] c;`
-- gates `h`, `x`, `y`, `z`, `s`, `sdg`, `cx`, `cy`, `cz`, `ccx`, `swap`, and `cp(angle)`
-- `barrier`
-- `measure q[i] -> c[i];` and register-wide `measure q;`
+- `qreg`/`creg` declarations, `qubit[n]`/`bit[n]` declarations, arbitrary register names, and multiple registers
+- no-op `include "qelib1.inc";`/standard include handling for common exported files
+- gates `h`, `x`, `y`, `z`, `s`, `sdg`, `t`, `tdg`, `id`, `p`, `u`, `U`, `u1`, `u2`, `u3`, `rx`, `ry`, `rz`,
+  `cx`, `cy`, `cz`, `ccx`, `mcx`, `mcy`, `mcz`, `swap`, `cp(angle)`, and `cu1(angle)`
+- `barrier`, including register-wide barriers
+- `measure q[i] -> c[i];`, `measure q -> c;`, and register-wide terminal measurement
 
-Parser ingress now tolerates a leading UTF-8 BOM on circuit files, and QASM angles accept standard scientific
-notation such as `1e-3` and `-2.5E-1`.
+Parser ingress tolerates a leading UTF-8 BOM on circuit files. QASM angles accept standard scientific notation and
+constant expressions over `pi`, unary signs, `+`, `-`, `*`, `/`, and parentheses.
 
 ## Engines
 

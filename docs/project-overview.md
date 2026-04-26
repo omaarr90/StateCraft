@@ -45,19 +45,19 @@ The JSON parser supports:
 
 ### OpenQASM format
 
-The OpenQASM parser currently supports an `OPENQASM 3.0;` subset with:
+The OpenQASM parser currently supports common `OPENQASM 2.0;` and `OPENQASM 3.0;` subsets with:
 
-- `qubit[n] q;`
-- optional `bit[n] c;`
-- `h`, `x`, `y`, `z`, `s`, `sdg`
-- `cx`, `cy`, `cz`, `ccx`
-- `swap`
-- `cp(angle)`
+- `qreg`/`creg` and `qubit[n]`/`bit[n]` declarations
+- arbitrary register names and multiple quantum/classical registers
+- no-op `include "qelib1.inc";`/standard include handling
+- `h`, `x`, `y`, `z`, `s`, `sdg`, `t`, `tdg`, `id`
+- `p`, `u`, `U`, `u1`, `u2`, `u3`, `rx`, `ry`, `rz`
+- `cx`, `cy`, `cz`, `ccx`, `mcx`, `mcy`, `mcz`, `swap`, `cp(angle)`, `cu1(angle)`
 - `barrier`
-- `measure q[i] -> c[i];`
-- register-wide `measure q;`
+- `measure q[i] -> c[i];`, `measure q -> c;`, and register-wide terminal measurement
 
-The parser accepts scientific-notation angles and tolerates a leading UTF-8 BOM on circuit files.
+The parser accepts scientific-notation angles, constant expressions over `pi`, and tolerates a leading UTF-8 BOM on
+circuit files.
 
 ## Engine capabilities
 

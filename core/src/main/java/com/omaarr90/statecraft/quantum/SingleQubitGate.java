@@ -2,7 +2,8 @@ package com.omaarr90.statecraft.quantum;
 
 import com.omaarr90.statecraft.core.math.ComplexNumber;
 
-public sealed interface SingleQubitGate permits PauliX, PauliY, PauliZ, Hadamard, SGate, SdgGate {
+public sealed interface SingleQubitGate
+		permits PauliX, PauliY, PauliZ, Hadamard, SGate, SdgGate, MatrixSingleQubitGate {
 
 	String name();
 

@@ -1,19 +1,29 @@
 package com.omaarr90.statecraft.core.parse;
 
+import com.omaarr90.statecraft.core.math.ComplexNumber;
 import com.omaarr90.statecraft.quantum.CnotGate;
 import com.omaarr90.statecraft.quantum.Hadamard;
+import com.omaarr90.statecraft.quantum.MatrixSingleQubitGate;
 import com.omaarr90.statecraft.quantum.PauliX;
 import com.omaarr90.statecraft.quantum.PauliY;
 import com.omaarr90.statecraft.quantum.PauliZ;
 import com.omaarr90.statecraft.quantum.QuantumCircuit;
 import com.omaarr90.statecraft.quantum.SGate;
 import com.omaarr90.statecraft.quantum.SdgGate;
+import com.omaarr90.statecraft.quantum.SingleQubitGate;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 
 public final class OpenQasmCircuitParser implements CircuitParser {
+
+	private static final double VERSION_EPS = 1e-9;
+	private static final ComplexNumber ZERO = ComplexNumber.zero();
+	private static final ComplexNumber ONE = ComplexNumber.one();
 
 	@Override
 	public QuantumCircuit parse(String source) {
@@ -31,113 +41,99 @@ public final class OpenQasmCircuitParser implements CircuitParser {
 		boolean measurementSeen = false;
 		for (Instruction instruction : program.instructions()) {
 			if (instruction instanceof Instruction.SingleGate single) {
-				if (measurementSeen) {
-					throw new CircuitParseException("Unitary gate cannot follow a measurement operation",
-							single.location.line(), single.location.column());
-				}
-				int target = single.target();
-				validateIndex(target, program.qubitCount(), single.location());
-				circuit = switch (single.gate()) {
-					case "h" -> circuit.append(new Hadamard(), target);
-					case "x" -> circuit.append(new PauliX(), target);
-					case "y" -> circuit.append(new PauliY(), target);
-					case "z" -> circuit.append(new PauliZ(), target);
-					case "s" -> circuit.append(new SGate(), target);
-					case "sdg" -> circuit.append(new SdgGate(), target);
-					default -> throw new CircuitParseException("Unknown gate: " + single.gate(), single.location.line(),
-							single.location.column());
-				};
+				rejectUnitaryAfterMeasurement(measurementSeen, single.location());
+				validateIndex(single.target(), program.qubitCount(), single.location());
+				circuit = circuit.append(single.gate(), single.target());
+			} else if (instruction instanceof Instruction.UnitaryNoOp noOp) {
+				rejectUnitaryAfterMeasurement(measurementSeen, noOp.location());
+				validateIndex(noOp.target(), program.qubitCount(), noOp.location());
 			} else if (instruction instanceof Instruction.Cnot cnot) {
-				if (measurementSeen) {
-					throw new CircuitParseException("Unitary gate cannot follow a measurement operation",
-							cnot.location.line(), cnot.location.column());
-				}
-				validateIndex(cnot.control(), program.qubitCount(), cnot.location());
-				validateIndex(cnot.target(), program.qubitCount(), cnot.location());
-				if (cnot.control() == cnot.target()) {
-					throw new CircuitParseException("CNOT control and target must be distinct", cnot.location.line(),
-							cnot.location.column());
-				}
+				rejectUnitaryAfterMeasurement(measurementSeen, cnot.location());
+				validateTwoQubitOperands(cnot.control(), cnot.target(), program.qubitCount(), "CNOT control and target",
+						cnot.location());
 				circuit = circuit.append(CnotGate.of(), cnot.control(), cnot.target());
 			} else if (instruction instanceof Instruction.ControlledSingle controlled) {
-				if (measurementSeen) {
-					throw new CircuitParseException("Unitary gate cannot follow a measurement operation",
-							controlled.location.line(), controlled.location.column());
-				}
-				validateIndex(controlled.control(), program.qubitCount(), controlled.location());
-				validateIndex(controlled.target(), program.qubitCount(), controlled.location());
-				if (controlled.control() == controlled.target()) {
-					throw new CircuitParseException("Controlled gate qubits must be distinct",
-							controlled.location.line(), controlled.location.column());
-				}
+				rejectUnitaryAfterMeasurement(measurementSeen, controlled.location());
+				validateTwoQubitOperands(controlled.control(), controlled.target(), program.qubitCount(),
+						"Controlled gate qubits", controlled.location());
 				circuit = switch (controlled.gate()) {
 					case "x" -> circuit.appendControlledX(controlled.control(), controlled.target());
 					case "y" -> circuit.appendControlledY(controlled.control(), controlled.target());
 					case "z" -> circuit.appendControlledZ(controlled.control(), controlled.target());
 					default -> throw new CircuitParseException("Unknown controlled gate: c" + controlled.gate(),
-							controlled.location.line(), controlled.location.column());
+							controlled.location().line(), controlled.location().column());
 				};
-			} else if (instruction instanceof Instruction.MultiControlX multiX) {
-				if (measurementSeen) {
-					throw new CircuitParseException("Unitary gate cannot follow a measurement operation",
-							multiX.location.line(), multiX.location.column());
-				}
-				validateIndex(multiX.target(), program.qubitCount(), multiX.location());
-				int[] controls = multiX.controls();
-				if (controls.length < 2) {
-					throw new CircuitParseException("Multi-control X requires at least two controls",
-							multiX.location.line(), multiX.location.column());
-				}
-				for (int control : controls) {
-					validateIndex(control, program.qubitCount(), multiX.location());
-					if (control == multiX.target()) {
-						throw new CircuitParseException("Control and target must be distinct", multiX.location.line(),
-								multiX.location.column());
-					}
-				}
-				circuit = circuit.appendMultiControl(new PauliX(), multiX.target(), controls);
+			} else if (instruction instanceof Instruction.MultiControl multi) {
+				rejectUnitaryAfterMeasurement(measurementSeen, multi.location());
+				validateMultiControl(multi.controls(), multi.target(), program.qubitCount(), multi.location());
+				circuit = switch (multi.gate()) {
+					case "x" -> circuit.appendMultiControl(new PauliX(), multi.target(), multi.controls());
+					case "y" -> circuit.appendMultiControl(new PauliY(), multi.target(), multi.controls());
+					case "z" -> circuit.appendMultiControl(new PauliZ(), multi.target(), multi.controls());
+					default -> throw new CircuitParseException("Unknown multi-control gate: mc" + multi.gate(),
+							multi.location().line(), multi.location().column());
+				};
 			} else if (instruction instanceof Instruction.Swap swap) {
-				if (measurementSeen) {
-					throw new CircuitParseException("Unitary gate cannot follow a measurement operation",
-							swap.location.line(), swap.location.column());
-				}
-				validateIndex(swap.first(), program.qubitCount(), swap.location());
-				validateIndex(swap.second(), program.qubitCount(), swap.location());
-				if (swap.first() == swap.second()) {
-					throw new CircuitParseException("SWAP qubits must be distinct", swap.location.line(),
-							swap.location.column());
-				}
+				rejectUnitaryAfterMeasurement(measurementSeen, swap.location());
+				validateTwoQubitOperands(swap.first(), swap.second(), program.qubitCount(), "SWAP qubits",
+						swap.location());
 				circuit = circuit.appendSwap(swap.first(), swap.second());
 			} else if (instruction instanceof Instruction.ControlledPhase phase) {
-				if (measurementSeen) {
-					throw new CircuitParseException("Unitary gate cannot follow a measurement operation",
-							phase.location.line(), phase.location.column());
-				}
-				validateIndex(phase.control(), program.qubitCount(), phase.location());
-				validateIndex(phase.target(), program.qubitCount(), phase.location());
-				if (phase.control() == phase.target()) {
-					throw new CircuitParseException("Controlled-phase qubits must be distinct", phase.location.line(),
-							phase.location.column());
-				}
+				rejectUnitaryAfterMeasurement(measurementSeen, phase.location());
+				validateTwoQubitOperands(phase.control(), phase.target(), program.qubitCount(),
+						"Controlled-phase qubits", phase.location());
 				circuit = circuit.appendControlledPhase(phase.angle(), phase.control(), phase.target());
 			} else if (instruction instanceof Instruction.Barrier) {
 				// Barrier is a scheduling hint with no simulation effect.
 			} else if (instruction instanceof Instruction.Measure measure) {
 				measurementSeen = true;
-				validateIndex(measure.qubit(), program.qubitCount(), measure.location());
-				circuit = circuit.measure(measure.qubit());
-			} else if (instruction instanceof Instruction.MeasureAll measureAll) {
-				measurementSeen = true;
-				int[] all = new int[program.qubitCount()];
-				for (int index = 0; index < program.qubitCount(); index++) {
-					all[index] = index;
+				for (int qubit : measure.qubits()) {
+					validateIndex(qubit, program.qubitCount(), measure.location());
 				}
-				circuit = circuit.measure(all);
+				circuit = circuit.measure(measure.qubits());
 			} else {
 				throw new CircuitParseException("Unsupported instruction: " + instruction);
 			}
 		}
 		return circuit;
+	}
+
+	private static void rejectUnitaryAfterMeasurement(boolean measurementSeen, SourceLocation location) {
+		if (measurementSeen) {
+			throw new CircuitParseException("Unitary gate cannot follow a measurement operation", location.line(),
+					location.column());
+		}
+	}
+
+	private static void validateTwoQubitOperands(int first, int second, int qubitCount, String label,
+			SourceLocation location) {
+		validateIndex(first, qubitCount, location);
+		validateIndex(second, qubitCount, location);
+		if (first == second) {
+			throw new CircuitParseException(label + " must be distinct", location.line(), location.column());
+		}
+	}
+
+	private static void validateMultiControl(int[] controls, int target, int qubitCount, SourceLocation location) {
+		if (controls.length == 0) {
+			throw new CircuitParseException("Multi-control gate requires at least one control", location.line(),
+					location.column());
+		}
+		validateIndex(target, qubitCount, location);
+		int[] sorted = controls.clone();
+		Arrays.sort(sorted);
+		for (int index = 0; index < sorted.length; index++) {
+			int control = sorted[index];
+			validateIndex(control, qubitCount, location);
+			if (control == target) {
+				throw new CircuitParseException("Control and target must be distinct", location.line(),
+						location.column());
+			}
+			if (index > 0 && control == sorted[index - 1]) {
+				throw new CircuitParseException("Duplicate control qubit: " + control, location.line(),
+						location.column());
+			}
+		}
 	}
 
 	private static void validateIndex(int index, int qubitCount, SourceLocation location) {
@@ -156,11 +152,11 @@ public final class OpenQasmCircuitParser implements CircuitParser {
 	private static final class Parser {
 
 		private final Tokenizer tokenizer;
+		private final Map<String, Register> qubitRegisters = new LinkedHashMap<>();
+		private final Map<String, Register> bitRegisters = new LinkedHashMap<>();
 		private Token current;
-		private Integer qubitCount;
-		private String qubitRegister;
-		private Integer bitCount;
-		private String bitRegister;
+		private int qubitCount;
+		private int bitCount;
 
 		private Parser(String source) {
 			this.tokenizer = new Tokenizer(source);
@@ -171,90 +167,107 @@ public final class OpenQasmCircuitParser implements CircuitParser {
 			expectIdentifier("OPENQASM");
 			Token versionToken = expect(TokenType.NUMBER, "Expected OpenQASM version number");
 			double version = parseDouble(versionToken);
-			if (Math.abs(version - 3.0) > 1e-9) {
-				throw new CircuitParseException("Only OPENQASM 3.0 is supported", versionToken.line,
+			if (Math.abs(version - 2.0) > VERSION_EPS && Math.abs(version - 3.0) > VERSION_EPS) {
+				throw new CircuitParseException("Only OPENQASM 2.0 and 3.0 are supported", versionToken.line,
 						versionToken.column);
 			}
 			expectSymbol(";");
 
 			List<Instruction> instructions = new ArrayList<>();
 			boolean instructionsStarted = false;
-
 			while (current.type != TokenType.EOF) {
+				if (isIdentifier("include")) {
+					parseInclude();
+					continue;
+				}
+				if (isIdentifier("qreg")) {
+					rejectDeclarationAfterInstruction(instructionsStarted, current);
+					parseLegacyRegisterDeclaration(RegisterKind.QUBIT);
+					continue;
+				}
+				if (isIdentifier("creg")) {
+					rejectDeclarationAfterInstruction(instructionsStarted, current);
+					parseLegacyRegisterDeclaration(RegisterKind.BIT);
+					continue;
+				}
 				if (isIdentifier("qubit")) {
-					if (instructionsStarted) {
-						throw error("Qubit declaration must appear before instructions", current);
-					}
-					parseQubitDeclaration();
+					rejectDeclarationAfterInstruction(instructionsStarted, current);
+					parseModernRegisterDeclaration(RegisterKind.QUBIT);
 					continue;
 				}
 				if (isIdentifier("bit")) {
-					if (instructionsStarted) {
-						throw error("Bit declaration must appear before instructions", current);
-					}
-					parseBitDeclaration();
+					rejectDeclarationAfterInstruction(instructionsStarted, current);
+					parseModernRegisterDeclaration(RegisterKind.BIT);
 					continue;
 				}
 				instructionsStarted = true;
 				instructions.add(parseInstruction());
 			}
 
-			if (qubitCount == null || qubitRegister == null) {
+			if (qubitRegisters.isEmpty()) {
 				throw new CircuitParseException("Missing qubit register declaration");
 			}
-
-			return new Program(qubitCount, qubitRegister, bitCount, bitRegister, instructions);
+			return new Program(qubitCount, instructions);
 		}
 
-		private void parseQubitDeclaration() {
-			Token keyword = expectIdentifier("qubit");
-			expectSymbol("[");
-			Token sizeToken = expect(TokenType.NUMBER, "Expected qubit register size");
-			int size = parseInteger(sizeToken);
-			expectSymbol("]");
-			Token nameToken = expect(TokenType.IDENTIFIER, "Expected qubit register name");
-			String name = nameToken.text;
-			expectSymbol(";");
-
-			if (!"q".equals(name)) {
-				throw new CircuitParseException("Only a qubit register named 'q' is supported", nameToken.line,
-						nameToken.column);
+		private void rejectDeclarationAfterInstruction(boolean instructionsStarted, Token token) {
+			if (instructionsStarted) {
+				throw new CircuitParseException("Register declarations must appear before instructions", token.line,
+						token.column);
 			}
-			if (size <= 0) {
-				throw new CircuitParseException("Qubit register size must be positive", sizeToken.line,
-						sizeToken.column);
-			}
-			if (qubitCount != null) {
-				throw new CircuitParseException("Multiple qubit register declarations are not supported", keyword.line,
-						keyword.column);
-			}
-			qubitCount = size;
-			qubitRegister = name;
 		}
 
-		private void parseBitDeclaration() {
-			Token keyword = expectIdentifier("bit");
+		private void parseInclude() {
+			expectIdentifier("include");
+			expect(TokenType.STRING, "Expected include file name");
+			expectSymbol(";");
+		}
+
+		private void parseLegacyRegisterDeclaration(RegisterKind kind) {
+			Token keyword = expectIdentifier(kind == RegisterKind.QUBIT ? "qreg" : "creg");
+			Token nameToken = expect(TokenType.IDENTIFIER, "Expected register name");
 			expectSymbol("[");
-			Token sizeToken = expect(TokenType.NUMBER, "Expected bit register size");
+			Token sizeToken = expect(TokenType.NUMBER, "Expected register size");
 			int size = parseInteger(sizeToken);
 			expectSymbol("]");
-			Token nameToken = expect(TokenType.IDENTIFIER, "Expected bit register name");
-			String name = nameToken.text;
 			expectSymbol(";");
+			addRegister(kind, nameToken.text, size, new SourceLocation(keyword.line, keyword.column),
+					new SourceLocation(sizeToken.line, sizeToken.column));
+		}
 
-			if (!"c".equals(name)) {
-				throw new CircuitParseException("Only a bit register named 'c' is supported", nameToken.line,
-						nameToken.column);
+		private void parseModernRegisterDeclaration(RegisterKind kind) {
+			Token keyword = expectIdentifier(kind == RegisterKind.QUBIT ? "qubit" : "bit");
+			int size = 1;
+			SourceLocation sizeLocation = new SourceLocation(keyword.line, keyword.column);
+			if (matchSymbol("[")) {
+				Token sizeToken = expect(TokenType.NUMBER, "Expected register size");
+				size = parseInteger(sizeToken);
+				sizeLocation = new SourceLocation(sizeToken.line, sizeToken.column);
+				expectSymbol("]");
 			}
+			Token nameToken = expect(TokenType.IDENTIFIER, "Expected register name");
+			expectSymbol(";");
+			addRegister(kind, nameToken.text, size, new SourceLocation(keyword.line, keyword.column), sizeLocation);
+		}
+
+		private void addRegister(RegisterKind kind, String name, int size, SourceLocation declarationLocation,
+				SourceLocation sizeLocation) {
 			if (size <= 0) {
-				throw new CircuitParseException("Bit register size must be positive", sizeToken.line, sizeToken.column);
+				throw new CircuitParseException("Register size must be positive", sizeLocation.line(),
+						sizeLocation.column());
 			}
-			if (bitCount != null) {
-				throw new CircuitParseException("Multiple bit register declarations are not supported", keyword.line,
-						keyword.column);
+			Map<String, Register> registers = kind == RegisterKind.QUBIT ? qubitRegisters : bitRegisters;
+			if (registers.containsKey(name)) {
+				throw new CircuitParseException("Duplicate register declaration: " + name, declarationLocation.line(),
+						declarationLocation.column());
 			}
-			bitCount = size;
-			bitRegister = name;
+			int offset = kind == RegisterKind.QUBIT ? qubitCount : bitCount;
+			registers.put(name, new Register(name, size, offset));
+			if (kind == RegisterKind.QUBIT) {
+				qubitCount += size;
+			} else {
+				bitCount += size;
+			}
 		}
 
 		private Instruction parseInstruction() {
@@ -263,158 +276,298 @@ public final class OpenQasmCircuitParser implements CircuitParser {
 			SourceLocation location = new SourceLocation(gateToken.line, gateToken.column);
 
 			return switch (gate) {
-				case "h", "x", "y", "z", "s", "sdg" -> {
-					int target = parseQubitOperand();
-					expectSymbol(";");
-					yield new Instruction.SingleGate(gate, target, location);
-				}
-				case "cx" -> {
-					int control = parseQubitOperand();
-					expectSymbol(",");
-					int target = parseQubitOperand();
-					expectSymbol(";");
-					yield new Instruction.Cnot(control, target, location);
-				}
-				case "cy", "cz" -> {
-					int control = parseQubitOperand();
-					expectSymbol(",");
-					int target = parseQubitOperand();
-					expectSymbol(";");
-					yield new Instruction.ControlledSingle(gate.substring(1), control, target, location);
-				}
-				case "ccx" -> {
-					int firstControl = parseQubitOperand();
-					expectSymbol(",");
-					int secondControl = parseQubitOperand();
-					expectSymbol(",");
-					int target = parseQubitOperand();
-					expectSymbol(";");
-					yield new Instruction.MultiControlX(new int[]{firstControl, secondControl}, target, location);
-				}
-				case "swap" -> {
-					int first = parseQubitOperand();
-					expectSymbol(",");
-					int second = parseQubitOperand();
-					expectSymbol(";");
-					yield new Instruction.Swap(first, second, location);
-				}
-				case "cp" -> {
-					expectSymbol("(");
-					double angle = parseAngle();
-					expectSymbol(")");
-					int control = parseQubitOperand();
-					expectSymbol(",");
-					int target = parseQubitOperand();
-					expectSymbol(";");
-					yield new Instruction.ControlledPhase(angle, control, target, location);
-				}
 				case "barrier" -> {
 					parseBarrierOperands();
 					expectSymbol(";");
 					yield new Instruction.Barrier(location);
 				}
-				case "measure" -> {
-					Token registerToken = expect(TokenType.IDENTIFIER, "Expected qubit register");
-					if (!"q".equals(registerToken.text)) {
-						throw new CircuitParseException("Unknown qubit register: " + registerToken.text,
-								registerToken.line, registerToken.column);
-					}
-					if (matchSymbol("[")) {
-						Token indexToken = expect(TokenType.NUMBER, "Expected qubit index");
-						int qubit = parseInteger(indexToken);
-						expectSymbol("]");
-						if (matchSymbol("->")) {
-							parseClassicalOperand();
-						}
-						expectSymbol(";");
-						yield new Instruction.Measure(qubit, location);
-					}
-					if (matchSymbol("->")) {
-						throw new CircuitParseException("Register-wide measurement does not support classical targets",
-								current.line, current.column);
-					}
-					expectSymbol(";");
-					yield new Instruction.MeasureAll(location);
-				}
-				default -> throw new CircuitParseException("Unsupported instruction: " + gateToken.text, gateToken.line,
-						gateToken.column);
+				case "measure" -> parseMeasurement(location);
+				case "gate", "opaque", "if", "reset", "def", "defcal", "for", "while", "box", "delay", "cal", "let",
+						"const" ->
+					throw new CircuitParseException("Unsupported OpenQASM construct: " + gateToken.text, gateToken.line,
+							gateToken.column);
+				default -> parseGateInstruction(gate, location);
 			};
 		}
 
+		private Instruction parseGateInstruction(String gate, SourceLocation location) {
+			List<Double> parameters = parseOptionalParameterList();
+			List<Integer> qubits = parseGateQubitOperands();
+			expectSymbol(";");
+
+			return switch (gate) {
+				case "h", "x", "y", "z", "s", "sdg", "t", "tdg" -> {
+					requireParameterCount(gate, parameters, 0, location);
+					requireQubitCount(gate, qubits, 1, location);
+					yield new Instruction.SingleGate(singleGate(gate, List.of(), location), qubits.get(0), location);
+				}
+				case "id", "iden" -> {
+					requireParameterCount(gate, parameters, 0, location);
+					requireQubitCount(gate, qubits, 1, location);
+					yield new Instruction.UnitaryNoOp(qubits.get(0), location);
+				}
+				case "p", "u1", "rx", "ry", "rz" -> {
+					requireParameterCount(gate, parameters, 1, location);
+					requireQubitCount(gate, qubits, 1, location);
+					yield new Instruction.SingleGate(singleGate(gate, parameters, location), qubits.get(0), location);
+				}
+				case "u", "u3" -> {
+					requireParameterCount(gate, parameters, 3, location);
+					requireQubitCount(gate, qubits, 1, location);
+					yield new Instruction.SingleGate(singleGate(gate, parameters, location), qubits.get(0), location);
+				}
+				case "u2" -> {
+					requireParameterCount(gate, parameters, 2, location);
+					requireQubitCount(gate, qubits, 1, location);
+					yield new Instruction.SingleGate(singleGate(gate, parameters, location), qubits.get(0), location);
+				}
+				case "cx", "cnot" -> {
+					requireParameterCount(gate, parameters, 0, location);
+					requireQubitCount(gate, qubits, 2, location);
+					yield new Instruction.Cnot(qubits.get(0), qubits.get(1), location);
+				}
+				case "cy", "cz" -> {
+					requireParameterCount(gate, parameters, 0, location);
+					requireQubitCount(gate, qubits, 2, location);
+					yield new Instruction.ControlledSingle(gate.substring(1), qubits.get(0), qubits.get(1), location);
+				}
+				case "ccx" -> {
+					requireParameterCount(gate, parameters, 0, location);
+					requireQubitCount(gate, qubits, 3, location);
+					yield new Instruction.MultiControl("x", new int[]{qubits.get(0), qubits.get(1)}, qubits.get(2),
+							location);
+				}
+				case "mcx", "mcy", "mcz" -> {
+					requireParameterCount(gate, parameters, 0, location);
+					if (qubits.size() < 2) {
+						throw new CircuitParseException("Gate '" + gate + "' requires controls and a target",
+								location.line(), location.column());
+					}
+					int[] controls = new int[qubits.size() - 1];
+					for (int index = 0; index < controls.length; index++) {
+						controls[index] = qubits.get(index);
+					}
+					yield new Instruction.MultiControl(gate.substring(2), controls, qubits.get(qubits.size() - 1),
+							location);
+				}
+				case "swap" -> {
+					requireParameterCount(gate, parameters, 0, location);
+					requireQubitCount(gate, qubits, 2, location);
+					yield new Instruction.Swap(qubits.get(0), qubits.get(1), location);
+				}
+				case "cp", "cu1" -> {
+					requireParameterCount(gate, parameters, 1, location);
+					requireQubitCount(gate, qubits, 2, location);
+					yield new Instruction.ControlledPhase(parameters.get(0), qubits.get(0), qubits.get(1), location);
+				}
+				default -> throw new CircuitParseException("Unsupported instruction: " + gate, location.line(),
+						location.column());
+			};
+		}
+
+		private List<Double> parseOptionalParameterList() {
+			if (!matchSymbol("(")) {
+				return List.of();
+			}
+			List<Double> parameters = new ArrayList<>();
+			if (!isSymbol(")")) {
+				do {
+					double value = parseExpression();
+					if (!Double.isFinite(value)) {
+						throw new CircuitParseException("Angle expression must be finite", current.line,
+								current.column);
+					}
+					parameters.add(value);
+				} while (matchSymbol(","));
+			}
+			expectSymbol(")");
+			return parameters;
+		}
+
+		private List<Integer> parseGateQubitOperands() {
+			List<Integer> qubits = new ArrayList<>();
+			qubits.add(parseSingleQubitOperand());
+			while (matchSymbol(",")) {
+				qubits.add(parseSingleQubitOperand());
+			}
+			return qubits;
+		}
+
+		private Instruction parseMeasurement(SourceLocation location) {
+			QubitOperand qubits = parseQubitOperand(true);
+			if (matchSymbol("->")) {
+				ClassicalOperand bits = parseClassicalOperand(true);
+				if (qubits.size() != bits.size()) {
+					throw new CircuitParseException("Measurement source and target sizes must match", location.line(),
+							location.column());
+				}
+			}
+			expectSymbol(";");
+			return new Instruction.Measure(qubits.qubits(), location);
+		}
+
 		private void parseBarrierOperands() {
-			Token registerToken = expect(TokenType.IDENTIFIER, "Expected barrier operand");
-			if (!"q".equals(registerToken.text)) {
+			parseQubitOperand(true);
+			while (matchSymbol(",")) {
+				parseQubitOperand(true);
+			}
+		}
+
+		private int parseSingleQubitOperand() {
+			QubitOperand operand = parseQubitOperand(false);
+			return operand.qubits()[0];
+		}
+
+		private QubitOperand parseQubitOperand(boolean allowRegisterWide) {
+			Token registerToken = expect(TokenType.IDENTIFIER, "Expected qubit register");
+			Register register = qubitRegisters.get(registerToken.text);
+			if (register == null) {
 				throw new CircuitParseException("Unknown qubit register: " + registerToken.text, registerToken.line,
 						registerToken.column);
 			}
 			if (matchSymbol("[")) {
 				Token indexToken = expect(TokenType.NUMBER, "Expected qubit index");
-				parseInteger(indexToken);
+				int index = parseInteger(indexToken);
 				expectSymbol("]");
-				while (matchSymbol(",")) {
-					parseQubitOperand();
+				validateRegisterIndex(register, index, "Qubit", indexToken);
+				return new QubitOperand(new int[]{register.offset() + index});
+			}
+			if (!allowRegisterWide) {
+				throw new CircuitParseException("Expected indexed qubit operand", registerToken.line,
+						registerToken.column);
+			}
+			return new QubitOperand(register.flatIndices());
+		}
+
+		private ClassicalOperand parseClassicalOperand(boolean allowRegisterWide) {
+			Token registerToken = expect(TokenType.IDENTIFIER, "Expected bit register");
+			Register register = bitRegisters.get(registerToken.text);
+			if (register == null) {
+				throw new CircuitParseException("Unknown bit register: " + registerToken.text, registerToken.line,
+						registerToken.column);
+			}
+			if (matchSymbol("[")) {
+				Token indexToken = expect(TokenType.NUMBER, "Expected bit index");
+				int index = parseInteger(indexToken);
+				expectSymbol("]");
+				validateRegisterIndex(register, index, "Bit", indexToken);
+				return new ClassicalOperand(1);
+			}
+			if (!allowRegisterWide) {
+				throw new CircuitParseException("Expected indexed bit operand", registerToken.line,
+						registerToken.column);
+			}
+			return new ClassicalOperand(register.size());
+		}
+
+		private void validateRegisterIndex(Register register, int index, String label, Token token) {
+			if (index < 0 || index >= register.size()) {
+				throw new CircuitParseException(label + " index out of range: " + index, token.line, token.column);
+			}
+		}
+
+		private double parseExpression() {
+			return parseAdditiveExpression();
+		}
+
+		private double parseAdditiveExpression() {
+			double value = parseMultiplicativeExpression();
+			while (true) {
+				if (matchSymbol("+")) {
+					value += parseMultiplicativeExpression();
+				} else if (matchSymbol("-")) {
+					value -= parseMultiplicativeExpression();
+				} else {
+					return value;
 				}
-				return;
-			}
-			while (matchSymbol(",")) {
-				parseQubitOperand();
 			}
 		}
 
-		private int parseQubitOperand() {
-			Token register = expect(TokenType.IDENTIFIER, "Expected qubit register");
-			if (!"q".equals(register.text)) {
-				throw new CircuitParseException("Unknown qubit register: " + register.text, register.line,
-						register.column);
-			}
-			expectSymbol("[");
-			Token indexToken = expect(TokenType.NUMBER, "Expected qubit index");
-			int index = parseInteger(indexToken);
-			expectSymbol("]");
-			return index;
-		}
-
-		private void parseClassicalOperand() {
-			Token register = expect(TokenType.IDENTIFIER, "Expected bit register");
-			if (bitRegister == null || bitCount == null) {
-				throw new CircuitParseException("Bit register must be declared before measurement targets",
-						register.line, register.column);
-			}
-			if (!bitRegister.equals(register.text)) {
-				throw new CircuitParseException("Unknown bit register: " + register.text, register.line,
-						register.column);
-			}
-			expectSymbol("[");
-			Token indexToken = expect(TokenType.NUMBER, "Expected bit index");
-			int index = parseInteger(indexToken);
-			expectSymbol("]");
-			if (index < 0 || index >= bitCount) {
-				throw new CircuitParseException("Bit index out of range: " + index, indexToken.line, indexToken.column);
+		private double parseMultiplicativeExpression() {
+			double value = parseUnaryExpression();
+			while (true) {
+				if (matchSymbol("*")) {
+					value *= parseUnaryExpression();
+				} else if (isSymbol("/")) {
+					Token operator = current;
+					advance();
+					double divisor = parseUnaryExpression();
+					if (Math.abs(divisor) == 0.0) {
+						throw new CircuitParseException("Angle expression division by zero", operator.line,
+								operator.column);
+					}
+					value /= divisor;
+				} else {
+					return value;
+				}
 			}
 		}
 
-		private double parseAngle() {
-			boolean negative = matchSymbol("-");
+		private double parseUnaryExpression() {
+			if (matchSymbol("+")) {
+				return parseUnaryExpression();
+			}
+			if (matchSymbol("-")) {
+				return -parseUnaryExpression();
+			}
+			return parsePrimaryExpression();
+		}
+
+		private double parsePrimaryExpression() {
+			if (current.type == TokenType.NUMBER) {
+				Token number = current;
+				advance();
+				return parseDouble(number);
+			}
 			if (current.type == TokenType.IDENTIFIER && "pi".equals(current.text)) {
 				advance();
-				double value = Math.PI;
-				if (matchSymbol("/")) {
-					Token denomToken = expect(TokenType.NUMBER, "Expected denominator after '/'");
-					int denom = parseInteger(denomToken);
-					if (denom == 0) {
-						throw new CircuitParseException("pi division by zero", denomToken.line, denomToken.column);
-					}
-					value /= denom;
-				}
-				return negative ? -value : value;
+				return Math.PI;
 			}
-			if (current.type == TokenType.NUMBER) {
-				Token numberToken = current;
-				advance();
-				double parsed = parseDouble(numberToken);
-				return negative ? -parsed : parsed;
+			if (matchSymbol("(")) {
+				double value = parseExpression();
+				expectSymbol(")");
+				return value;
 			}
-			throw error("Expected angle literal", current);
+			throw error("Expected angle expression", current);
+		}
+
+		private SingleQubitGate singleGate(String gate, List<Double> parameters, SourceLocation location) {
+			return switch (gate) {
+				case "h" -> new Hadamard();
+				case "x" -> new PauliX();
+				case "y" -> new PauliY();
+				case "z" -> new PauliZ();
+				case "s" -> new SGate();
+				case "sdg" -> new SdgGate();
+				case "t" -> phaseGate("T", Math.PI / 4.0);
+				case "tdg" -> phaseGate("Tdg", -Math.PI / 4.0);
+				case "p", "u1" -> phaseGate(gate, parameters.get(0));
+				case "rx" -> rotationX(parameters.get(0));
+				case "ry" -> rotationY(parameters.get(0));
+				case "rz" -> rotationZ(parameters.get(0));
+				case "u" -> uGate("U", parameters.get(0), parameters.get(1), parameters.get(2));
+				case "u3" -> uGate("u3", parameters.get(0), parameters.get(1), parameters.get(2));
+				case "u2" -> uGate("u2", Math.PI / 2.0, parameters.get(0), parameters.get(1));
+				default -> throw new CircuitParseException("Unsupported single-qubit gate: " + gate, location.line(),
+						location.column());
+			};
+		}
+
+		private void requireParameterCount(String gate, List<Double> parameters, int expected,
+				SourceLocation location) {
+			if (parameters.size() != expected) {
+				throw new CircuitParseException(
+						"Gate '" + gate + "' expects " + expected + " parameter(s), got " + parameters.size(),
+						location.line(), location.column());
+			}
+		}
+
+		private void requireQubitCount(String gate, List<Integer> qubits, int expected, SourceLocation location) {
+			if (qubits.size() != expected) {
+				throw new CircuitParseException(
+						"Gate '" + gate + "' expects " + expected + " qubit operand(s), got " + qubits.size(),
+						location.line(), location.column());
+			}
 		}
 
 		private Token expectIdentifier(String expected) {
@@ -462,7 +615,7 @@ public final class OpenQasmCircuitParser implements CircuitParser {
 		}
 
 		private int parseInteger(Token token) {
-			if (token.text.contains(".")) {
+			if (token.text.contains(".") || token.text.contains("e") || token.text.contains("E")) {
 				throw new CircuitParseException("Expected integer but got '" + token.text + "'", token.line,
 						token.column);
 			}
@@ -475,7 +628,11 @@ public final class OpenQasmCircuitParser implements CircuitParser {
 
 		private double parseDouble(Token token) {
 			try {
-				return Double.parseDouble(token.text);
+				double value = Double.parseDouble(token.text);
+				if (!Double.isFinite(value)) {
+					throw new CircuitParseException("Invalid finite number: " + token.text, token.line, token.column);
+				}
+				return value;
 			} catch (NumberFormatException e) {
 				throw new CircuitParseException("Invalid number: " + token.text, token.line, token.column, e);
 			}
@@ -486,23 +643,99 @@ public final class OpenQasmCircuitParser implements CircuitParser {
 		}
 	}
 
-	private record Program(int qubitCount, String qubitRegister, Integer bitCount, String bitRegister,
-			List<Instruction> instructions) {
+	private static SingleQubitGate phaseGate(String name, double angle) {
+		return new MatrixSingleQubitGate(name, ONE, ZERO, ZERO, cis(angle));
+	}
+
+	private static SingleQubitGate rotationX(double angle) {
+		double half = angle / 2.0;
+		double cos = Math.cos(half);
+		double sin = Math.sin(half);
+		ComplexNumber c = new ComplexNumber(cos, 0.0);
+		ComplexNumber minusISin = new ComplexNumber(0.0, -sin);
+		return new MatrixSingleQubitGate("rx", c, minusISin, minusISin, c);
+	}
+
+	private static SingleQubitGate rotationY(double angle) {
+		double half = angle / 2.0;
+		double cos = Math.cos(half);
+		double sin = Math.sin(half);
+		return new MatrixSingleQubitGate("ry", new ComplexNumber(cos, 0.0), new ComplexNumber(-sin, 0.0),
+				new ComplexNumber(sin, 0.0), new ComplexNumber(cos, 0.0));
+	}
+
+	private static SingleQubitGate rotationZ(double angle) {
+		double half = angle / 2.0;
+		return new MatrixSingleQubitGate("rz", cis(-half), ZERO, ZERO, cis(half));
+	}
+
+	private static SingleQubitGate uGate(String name, double theta, double phi, double lambda) {
+		double cos = Math.cos(theta / 2.0);
+		double sin = Math.sin(theta / 2.0);
+		ComplexNumber m00 = new ComplexNumber(cos, 0.0);
+		ComplexNumber m01 = cis(lambda).scale(-sin);
+		ComplexNumber m10 = cis(phi).scale(sin);
+		ComplexNumber m11 = cis(phi + lambda).scale(cos);
+		return new MatrixSingleQubitGate(name, m00, m01, m10, m11);
+	}
+
+	private static ComplexNumber cis(double angle) {
+		return new ComplexNumber(Math.cos(angle), Math.sin(angle));
+	}
+
+	private enum RegisterKind {
+		QUBIT, BIT
+	}
+
+	private record Program(int qubitCount, List<Instruction> instructions) {
 		private Program {
 			instructions = instructions == null ? List.of() : List.copyOf(instructions);
+		}
+	}
+
+	private record Register(String name, int size, int offset) {
+
+		private int[] flatIndices() {
+			int[] indices = new int[size];
+			for (int index = 0; index < size; index++) {
+				indices[index] = offset + index;
+			}
+			return indices;
 		}
 	}
 
 	private record SourceLocation(int line, int column) {
 	}
 
-	private sealed interface Instruction permits Instruction.SingleGate, Instruction.Cnot, Instruction.ControlledSingle,
-			Instruction.MultiControlX, Instruction.Swap, Instruction.ControlledPhase, Instruction.Barrier,
-			Instruction.Measure, Instruction.MeasureAll {
+	private record QubitOperand(int[] qubits) {
+
+		private QubitOperand {
+			qubits = qubits.clone();
+		}
+
+		private int size() {
+			return qubits.length;
+		}
+
+		@Override
+		public int[] qubits() {
+			return qubits.clone();
+		}
+	}
+
+	private record ClassicalOperand(int size) {
+	}
+
+	private sealed interface Instruction permits Instruction.SingleGate, Instruction.UnitaryNoOp, Instruction.Cnot,
+			Instruction.ControlledSingle, Instruction.MultiControl, Instruction.Swap, Instruction.ControlledPhase,
+			Instruction.Barrier, Instruction.Measure {
 
 		SourceLocation location();
 
-		record SingleGate(String gate, int target, SourceLocation location) implements Instruction {
+		record SingleGate(SingleQubitGate gate, int target, SourceLocation location) implements Instruction {
+		}
+
+		record UnitaryNoOp(int target, SourceLocation location) implements Instruction {
 		}
 
 		record Cnot(int control, int target, SourceLocation location) implements Instruction {
@@ -511,7 +744,11 @@ public final class OpenQasmCircuitParser implements CircuitParser {
 		record ControlledSingle(String gate, int control, int target, SourceLocation location) implements Instruction {
 		}
 
-		record MultiControlX(int[] controls, int target, SourceLocation location) implements Instruction {
+		record MultiControl(String gate, int[] controls, int target, SourceLocation location) implements Instruction {
+			public MultiControl {
+				controls = controls.clone();
+			}
+
 			@Override
 			public int[] controls() {
 				return controls.clone();
@@ -527,15 +764,20 @@ public final class OpenQasmCircuitParser implements CircuitParser {
 		record Barrier(SourceLocation location) implements Instruction {
 		}
 
-		record Measure(int qubit, SourceLocation location) implements Instruction {
-		}
+		record Measure(int[] qubits, SourceLocation location) implements Instruction {
+			public Measure {
+				qubits = qubits.clone();
+			}
 
-		record MeasureAll(SourceLocation location) implements Instruction {
+			@Override
+			public int[] qubits() {
+				return qubits.clone();
+			}
 		}
 	}
 
 	private enum TokenType {
-		IDENTIFIER, NUMBER, SYMBOL, EOF
+		IDENTIFIER, NUMBER, STRING, SYMBOL, EOF
 	}
 
 	private record Token(TokenType type, String text, int line, int column) {
@@ -558,6 +800,10 @@ public final class OpenQasmCircuitParser implements CircuitParser {
 		}
 
 		private Token nextToken() {
+			return readToken();
+		}
+
+		private Token readToken() {
 			skipWhitespaceAndComments();
 			if (index >= length) {
 				return new Token(TokenType.EOF, "", line, column);
@@ -574,6 +820,10 @@ public final class OpenQasmCircuitParser implements CircuitParser {
 					|| (ch == '.' && index + 1 < length && Character.isDigit(source.charAt(index + 1)))) {
 				String text = readNumber();
 				return new Token(TokenType.NUMBER, text, startLine, startColumn);
+			}
+			if (ch == '"') {
+				String text = readString(startLine, startColumn);
+				return new Token(TokenType.STRING, text, startLine, startColumn);
 			}
 			if (ch == '-' && index + 1 < length && source.charAt(index + 1) == '>') {
 				advance();
@@ -669,6 +919,31 @@ public final class OpenQasmCircuitParser implements CircuitParser {
 			return source.substring(start, index);
 		}
 
+		private String readString(int startLine, int startColumn) {
+			advance();
+			StringBuilder builder = new StringBuilder();
+			while (index < length) {
+				char ch = source.charAt(index);
+				if (ch == '"') {
+					advance();
+					return builder.toString();
+				}
+				if (ch == '\\') {
+					advance();
+					if (index >= length) {
+						break;
+					}
+					char escaped = source.charAt(index);
+					builder.append(escaped);
+					advance();
+					continue;
+				}
+				builder.append(ch);
+				advance();
+			}
+			throw new CircuitParseException("Unterminated string literal", startLine, startColumn);
+		}
+
 		private void advance() {
 			char ch = source.charAt(index++);
 			if (ch == '\n') {
@@ -688,7 +963,8 @@ public final class OpenQasmCircuitParser implements CircuitParser {
 		}
 
 		private static boolean isSymbolChar(char ch) {
-			return ch == ';' || ch == ',' || ch == '[' || ch == ']' || ch == '(' || ch == ')' || ch == '/' || ch == '-';
+			return ch == ';' || ch == ',' || ch == '[' || ch == ']' || ch == '(' || ch == ')' || ch == '/' || ch == '-'
+					|| ch == '+' || ch == '*';
 		}
 	}
 }
