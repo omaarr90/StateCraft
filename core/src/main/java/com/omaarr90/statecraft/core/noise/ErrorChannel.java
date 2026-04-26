@@ -101,7 +101,7 @@ public sealed interface ErrorChannel permits DepolarizingChannel, AmplitudeDampi
 	 * @param t1
 	 *            energy relaxation time in seconds (must be positive)
 	 * @param t2
-	 *            dephasing time in seconds (must satisfy 0 < t2 <= 2*t1)
+	 *            dephasing time in seconds (must satisfy 0 &lt; t2 &lt;= 2*t1)
 	 * @param gateTime
 	 *            gate duration in seconds
 	 * @param qubits

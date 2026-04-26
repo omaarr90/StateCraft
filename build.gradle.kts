@@ -29,7 +29,7 @@ allprojects {
 
 subprojects {
     group = "com.omaarr90.statecraft"
-    version = "0.1.0-SNAPSHOT"
+    version = "0.1.0"
 
     plugins.withType<JavaPlugin> {
         the<JavaPluginExtension>().toolchain.languageVersion.set(JavaLanguageVersion.of(25))

@@ -151,8 +151,8 @@ public class ComplexArrays {
 	 * Aliasing: always safe (in-place only).
 	 *
 	 * Exceptions: - NullPointerException if x is null - IllegalArgumentException if
-	 * nC < 0 - IndexOutOfBoundsException if the computed double-index range is out
-	 * of bounds
+	 * nC &lt; 0 - IndexOutOfBoundsException if the computed double-index range is
+	 * out of bounds
 	 *
 	 * Numerics: IEEE-754 semantics; NaN/∞ propagate naturally.
 	 */
@@ -186,7 +186,7 @@ public class ComplexArrays {
 	 * segments; loads occur before stores.
 	 *
 	 * Exceptions: - NullPointerException if x or y is null -
-	 * IllegalArgumentException if nC < 0 - IndexOutOfBoundsException if any
+	 * IllegalArgumentException if nC &lt; 0 - IndexOutOfBoundsException if any
 	 * computed range is out of bounds
 	 */
 	public static void axpy(double alphaRe, double alphaIm, double[] x, int xOffC, double[] y, int yOffC, int nC) {
@@ -253,7 +253,7 @@ public class ComplexArrays {
 	 * thrown.
 	 *
 	 * Exceptions: - NullPointerException if any array is null -
-	 * IllegalArgumentException if nC < 0 or illegal aliasing occurs -
+	 * IllegalArgumentException if nC &lt; 0 or illegal aliasing occurs -
 	 * IndexOutOfBoundsException if any computed range is out of bounds
 	 */
 	public static void mul(double[] x, int xOffC, double[] y, int yOffC, double[] out, int outOffC, int nC) {

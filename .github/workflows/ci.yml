@@ -22,7 +22,8 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 25, cache: gradle }
       - uses: gradle/gradle-build-action@v3
-      - run: ./gradlew spotlessCheck build --stacktrace
+      - run: ./gradlew spotlessCheck build :core:javadoc :engines:javadoc publishToMavenLocal --stacktrace
+      - run: ./gradlew -p scripts/consumer-smoke test --stacktrace
 
   native:
     runs-on: ubuntu-latest
