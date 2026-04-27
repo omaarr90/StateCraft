@@ -29,9 +29,14 @@ Phase 1 established the project foundation: a multi-module Gradle layout, GraalV
 ### Statevector engine integration
 - `StatevectorEngine` instantiates a `SplittableRandom` for noise sampling when a model is provided.
 - After each unitary operation, the engine calls `applyNoiseAfterOperation` and applies each channel in the list returned by the noise model.
-- `applyErrorChannel` handles composite channels recursively, rejects multi-qubit channels, and checks qubit ranges.
-- `applySingleQubitKraus` applies the Kraus matrix via the existing single-qubit kernel and then renormalizes the state.
+- `applyErrorChannel` handles composite channels recursively, validates target/decomposition sizes, and checks qubit ranges.
+- Single-qubit Kraus application uses the existing single-qubit kernel; generic multi-qubit Kraus application uses a target-layout helper. Both paths renormalize the state after the sampled operator is applied.
 - Measurements remain a terminal suffix; noise is not applied after measurements, and unitary gates after measurement are rejected.
+
+### CLI integration
+- `demo`, `run`, and `suite` share noise options for global depolarizing, amplitude damping, phase flip, phase damping, and thermal relaxation channels.
+- `--noise-config` loads JSON configs with optional `noiseSeed` and global channel values; CLI flags and config values are merged, with `--noise-seed` taking precedence over config seeds.
+- Seed-only noise inputs are rejected so users cannot accidentally request deterministic noise sampling without configured noise channels.
 
 ## Code Snippet (Engine Integration)
 ```java
@@ -76,18 +81,18 @@ Case 2: X on |0>
 ## Challenges and Resolutions
 - Deterministic sampling required consistent RNG behavior between engine and tests; resolved by injecting `noiseSeed` while deriving Kraus branch weights from the live state on every application.
 - Kraus application changes state norm; a renormalization step was added after each operator to prevent drift.
-- Multi-qubit Kraus operators are not yet supported; explicit exceptions were added to fail fast.
+- Generic multi-qubit Kraus application required target-layout handling; resolved by loading local target blocks, multiplying by the sampled Kraus matrix, and validating decomposition/target mismatches.
 - Thermal-relaxation completeness drift was resolved by rebuilding the channel with a CPTP-consistent three-operator decomposition that no longer relies on static sampling weights.
 - Noise application had to respect the measurement suffix constraint; noise is only applied to unitary operations.
 
 ## Current Limitations
-- Only single-qubit Kraus operators are supported.
-- Idle-time noise is not modeled.
-- CLI noise configuration currently targets global channels; gate-specific and per-qubit schedule design remains primarily API-driven.
+- Built-in channel factories currently define single-qubit channels; correlated multi-qubit error models need first-class channel definitions before they are ergonomic to use.
+- Idle-qubit noise is modeled through `NoiseModel.onQubits`, but there is no elapsed-time scheduler or per-gate duration metadata beyond thermal-relaxation gate time.
+- CLI noise configuration targets global channels; gate-specific and per-qubit schedule design remains API-driven.
 - One noise trajectory is sampled per simulation; no trajectory averaging is provided yet.
 
 ## Next Steps
-1. Add CLI flags and configuration loaders for noise models.
-2. Extend support to multi-qubit Kraus operators in the engine and channel definitions.
-3. Introduce idle-time noise using circuit scheduling or explicit gate-time metadata.
-4. Add trajectory averaging utilities to estimate noisy distributions more accurately.
+1. Add trajectory averaging utilities to estimate noisy distributions more accurately.
+2. Extend the CLI config schema for gate-specific and per-qubit schedules.
+3. Add time-aware circuit scheduling and per-gate duration metadata for more physical idle-time noise.
+4. Add first-class correlated multi-qubit channel definitions if the project needs those error models.
