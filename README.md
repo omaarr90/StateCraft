@@ -118,6 +118,11 @@ public final class BellExample {
 
 Available engine ids are `statevector`, `stabilizer`, and `tensornetwork`.
 
+The `statevector` engine uses SIMD kernels and a ForkJoin data-parallel layer
+for large dense state updates. CLI commands that run the statevector backend
+accept `--statevector-parallelism <threads>`; use `1` to force serial
+execution for debugging or comparison.
+
 ## Development
 
 Common checks:

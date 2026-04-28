@@ -38,6 +38,8 @@ constant expressions over `pi`, unary signs, `+`, `-`, `*`, `/`, and parentheses
 `statevector`
 
 - dense statevector simulator backed by Vector API kernels
+- ForkJoin data-parallel execution for large statevector gate kernels, with
+  `--statevector-parallelism <threads>` available in the CLI
 - supports all circuit operations in the current model
 - supports seeded measurement sampling and noise application after each unitary gate
 

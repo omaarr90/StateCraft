@@ -1,0 +1,221 @@
+{
+  "schema_version": 1,
+  "defaults": {
+    "warmup_runs": 1,
+    "timed_runs": 5,
+    "noise_trajectories": 512
+  },
+  "fixtures": [
+    {
+      "id": "bell",
+      "category": "ideal",
+      "qubits": 2,
+      "operations": [
+        { "gate": "h", "target": 0 },
+        { "gate": "cx", "control": 0, "target": 1 }
+      ],
+      "profiles": ["smoke", "full"]
+    },
+    {
+      "id": "ghz",
+      "category": "ideal",
+      "qubits": 3,
+      "operations": [
+        { "gate": "h", "target": 0 },
+        { "gate": "cx", "control": 0, "target": 1 },
+        { "gate": "cx", "control": 0, "target": 2 }
+      ],
+      "profiles": ["smoke", "full"]
+    },
+    {
+      "id": "deutsch_jozsa_constant",
+      "category": "ideal",
+      "qubits": 4,
+      "operations": [
+        { "gate": "x", "target": 3 },
+        { "gate": "h", "target": 0 },
+        { "gate": "h", "target": 1 },
+        { "gate": "h", "target": 2 },
+        { "gate": "h", "target": 3 },
+        { "gate": "h", "target": 0 },
+        { "gate": "h", "target": 1 },
+        { "gate": "h", "target": 2 }
+      ],
+      "profiles": ["full"]
+    },
+    {
+      "id": "deutsch_jozsa_balanced",
+      "category": "ideal",
+      "qubits": 4,
+      "operations": [
+        { "gate": "x", "target": 3 },
+        { "gate": "h", "target": 0 },
+        { "gate": "h", "target": 1 },
+        { "gate": "h", "target": 2 },
+        { "gate": "h", "target": 3 },
+        { "gate": "cx", "control": 0, "target": 3 },
+        { "gate": "h", "target": 0 },
+        { "gate": "h", "target": 1 },
+        { "gate": "h", "target": 2 }
+      ],
+      "profiles": ["full"]
+    },
+    {
+      "id": "bernstein_vazirani",
+      "category": "ideal",
+      "qubits": 5,
+      "operations": [
+        { "gate": "x", "target": 4 },
+        { "gate": "h", "target": 0 },
+        { "gate": "h", "target": 1 },
+        { "gate": "h", "target": 2 },
+        { "gate": "h", "target": 3 },
+        { "gate": "h", "target": 4 },
+        { "gate": "cx", "control": 0, "target": 4 },
+        { "gate": "cx", "control": 1, "target": 4 },
+        { "gate": "cx", "control": 3, "target": 4 },
+        { "gate": "h", "target": 0 },
+        { "gate": "h", "target": 1 },
+        { "gate": "h", "target": 2 },
+        { "gate": "h", "target": 3 }
+      ],
+      "profiles": ["full"]
+    },
+    {
+      "id": "qft_basis_101",
+      "category": "ideal",
+      "qubits": 3,
+      "operations": [
+        { "gate": "x", "target": 0 },
+        { "gate": "x", "target": 2 },
+        { "gate": "h", "target": 0 },
+        { "gate": "cp", "control": 1, "target": 0, "angle": 1.5707963267948966 },
+        { "gate": "cp", "control": 2, "target": 0, "angle": 0.7853981633974483 },
+        { "gate": "h", "target": 1 },
+        { "gate": "cp", "control": 2, "target": 1, "angle": 1.5707963267948966 },
+        { "gate": "h", "target": 2 },
+        { "gate": "swap", "first": 0, "second": 2 }
+      ],
+      "profiles": ["full"]
+    },
+    {
+      "id": "phase_estimation_1bit",
+      "category": "ideal",
+      "qubits": 2,
+      "operations": [
+        { "gate": "x", "target": 1 },
+        { "gate": "h", "target": 0 },
+        { "gate": "cp", "control": 0, "target": 1, "angle": 3.141592653589793 },
+        { "gate": "h", "target": 0 }
+      ],
+      "profiles": ["full"]
+    },
+    {
+      "id": "random_layers_8q",
+      "category": "scalability",
+      "qubits": 8,
+      "generator": { "type": "random_layers", "seed": 8008, "layers": 12 },
+      "profiles": ["full"]
+    },
+    {
+      "id": "random_layers_12q",
+      "category": "scalability",
+      "qubits": 12,
+      "generator": { "type": "random_layers", "seed": 12012, "layers": 12 },
+      "profiles": ["full"]
+    },
+    {
+      "id": "random_layers_16q",
+      "category": "scalability",
+      "qubits": 16,
+      "generator": { "type": "random_layers", "seed": 16016, "layers": 10 },
+      "profiles": ["full"]
+    },
+    {
+      "id": "random_layers_20q",
+      "category": "scalability",
+      "qubits": 20,
+      "generator": { "type": "random_layers", "seed": 20020, "layers": 8 },
+      "profiles": ["full"]
+    },
+    {
+      "id": "random_layers_24q",
+      "category": "scalability",
+      "qubits": 24,
+      "generator": { "type": "random_layers", "seed": 24024, "layers": 6 },
+      "profiles": ["full"]
+    },
+    {
+      "id": "noise_depolarizing_1q",
+      "category": "noise",
+      "qubits": 1,
+      "operations": [
+        { "gate": "h", "target": 0 },
+        { "gate": "x", "target": 0 },
+        { "gate": "h", "target": 0 }
+      ],
+      "noise": { "type": "depolarizing", "probability": 0.08, "qubits": [0], "seed": 91001 },
+      "profiles": ["smoke", "full"]
+    },
+    {
+      "id": "noise_phase_flip_2q",
+      "category": "noise",
+      "qubits": 2,
+      "operations": [
+        { "gate": "h", "target": 0 },
+        { "gate": "h", "target": 1 },
+        { "gate": "cx", "control": 0, "target": 1 },
+        { "gate": "h", "target": 0 }
+      ],
+      "noise": { "type": "phase_flip", "probability": 0.06, "qubits": [0, 1], "seed": 91002 },
+      "profiles": ["full"]
+    },
+    {
+      "id": "noise_amplitude_damping_2q",
+      "category": "noise",
+      "qubits": 2,
+      "operations": [
+        { "gate": "x", "target": 0 },
+        { "gate": "x", "target": 1 },
+        { "gate": "h", "target": 0 },
+        { "gate": "cx", "control": 0, "target": 1 }
+      ],
+      "noise": { "type": "amplitude_damping", "gamma": 0.04, "qubits": [0, 1], "seed": 91003 },
+      "profiles": ["full"]
+    },
+    {
+      "id": "noise_phase_damping_3q",
+      "category": "noise",
+      "qubits": 3,
+      "operations": [
+        { "gate": "h", "target": 0 },
+        { "gate": "h", "target": 1 },
+        { "gate": "h", "target": 2 },
+        { "gate": "cx", "control": 0, "target": 1 },
+        { "gate": "cx", "control": 1, "target": 2 }
+      ],
+      "noise": { "type": "phase_damping", "lambda": 0.05, "qubits": [0, 1, 2], "seed": 91004 },
+      "profiles": ["full"]
+    },
+    {
+      "id": "noise_thermal_relaxation_3q",
+      "category": "noise",
+      "qubits": 3,
+      "operations": [
+        { "gate": "x", "target": 0 },
+        { "gate": "h", "target": 1 },
+        { "gate": "cx", "control": 1, "target": 2 },
+        { "gate": "h", "target": 0 }
+      ],
+      "noise": {
+        "type": "thermal_relaxation",
+        "t1": 0.00005,
+        "t2": 0.00003,
+        "gate_time": 0.0000001,
+        "qubits": [0, 1, 2],
+        "seed": 91005
+      },
+      "profiles": ["full"]
+    }
+  ]
+}

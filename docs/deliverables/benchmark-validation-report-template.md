@@ -21,5 +21,8 @@
 ## Validation by Suite
 {{validation_suite_table}}
 
+## External Simulator Comparison
+{{external_comparison_summary}}
+
 ## Reproducibility Commands
 {{repro_commands}}

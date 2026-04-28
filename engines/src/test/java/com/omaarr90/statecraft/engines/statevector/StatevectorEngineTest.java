@@ -211,6 +211,50 @@ class StatevectorEngineTest {
 	}
 
 	@Test
+	void parallelExecutionMatchesSerialForMixedStatevectorOperations() {
+		Random random = new Random(RANDOM_SEED ^ 0xFACEB00CL);
+		ComplexNumber[] matrix = extractUnitaryMatrix(randomTwoQubitCircuit(random, 7));
+		QuantumCircuit circuit = new QuantumCircuit(6).append(randomSingleGate(random), 0)
+				.append(randomSingleGate(random), 5).append(CnotGate.of(), 5, 1).appendSwap(0, 4)
+				.appendTwoQubitUnitary(matrix, 5, 2).appendControlledPhase(Math.PI / 7.0, 4, 3)
+				.appendMultiControl(new PauliY(), 1, 0, 2, 5).append(randomSingleGate(random), 3);
+		StateVector initialState = toStateVector(6, randomNormalizedState(random, 1 << 6));
+
+		StatevectorEngine serial = new StatevectorEngine(
+				StatevectorExecutionConfig.withParallelismAndMinimumWorkUnits(1, 1));
+		StatevectorEngine parallel = new StatevectorEngine(
+				StatevectorExecutionConfig.withParallelismAndMinimumWorkUnits(4, 1));
+
+		StateVector expected = serial.simulate(SimulationRequest.withInitialState(circuit, initialState)).finalState()
+				.orElseThrow();
+		StateVector actual = parallel.simulate(SimulationRequest.withInitialState(circuit, initialState)).finalState()
+				.orElseThrow();
+
+		assertArrayEquals(expected.data(), actual.data(), EPS);
+	}
+
+	@Test
+	void parallelExecutionPreservesSeededNoisySimulation() {
+		QuantumCircuit circuit = new QuantumCircuit(5).append(new Hadamard(), 0).append(new Hadamard(), 3)
+				.append(CnotGate.of(), 3, 1).appendSwap(0, 4).appendControlledPhase(Math.PI / 5.0, 4, 2)
+				.appendMultiControl(new PauliX(), 2, 0, 1, 3);
+		com.omaarr90.statecraft.core.noise.NoiseModel noiseModel = com.omaarr90.statecraft.core.noise.NoiseModel
+				.builder().afterAllGates(com.omaarr90.statecraft.core.noise.ErrorChannel.phaseFlip(0.35, 0))
+				.afterAllGates(com.omaarr90.statecraft.core.noise.ErrorChannel.amplitudeDamping(0.2, 3)).build();
+		SimulationRequest request = SimulationRequest.zeroState(circuit).withNoiseModel(noiseModel).withNoiseSeed(99L);
+
+		StatevectorEngine serial = new StatevectorEngine(
+				StatevectorExecutionConfig.withParallelismAndMinimumWorkUnits(1, 1));
+		StatevectorEngine parallel = new StatevectorEngine(
+				StatevectorExecutionConfig.withParallelismAndMinimumWorkUnits(4, 1));
+
+		StateVector expected = serial.simulate(request).finalState().orElseThrow();
+		StateVector actual = parallel.simulate(request).finalState().orElseThrow();
+
+		assertArrayEquals(expected.data(), actual.data(), EPS);
+	}
+
+	@Test
 	void bellStateHistogramShowsBalancedCounts() {
 		QuantumCircuit circuit = new QuantumCircuit(2).append(new Hadamard(), 0).append(CnotGate.of(), 0, 1);
 

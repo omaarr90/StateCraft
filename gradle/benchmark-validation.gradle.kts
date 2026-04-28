@@ -2,12 +2,14 @@ import com.sun.management.OperatingSystemMXBean
 import groovy.json.JsonOutput
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
+import org.gradle.api.Project
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.TaskAction
+import org.gradle.api.tasks.compile.JavaCompile
 import org.gradle.jvm.toolchain.JavaLanguageVersion
 import org.gradle.jvm.toolchain.JavaToolchainService
 import org.gradle.kotlin.dsl.register
@@ -36,9 +38,13 @@ data class CommandCapture(
 data class BenchmarkRun(
     val run: Int,
     val aosMs: Double,
+    val parallelAosMs: Double,
     val splitMs: Double,
     val speedupX: Double,
+    val parallelSpeedupX: Double,
     val maxAbsDiff: Double,
+    val parallelMaxAbsDiff: Double,
+    val parallelism: Int,
 )
 
 data class StatsSummary(
@@ -78,6 +84,49 @@ data class FailureSummary(
     val file: String,
 )
 
+fun externalComparisonClasspath(
+    project: Project,
+    repoRoot: File,
+): String =
+    project
+        .files(
+            repoRoot.resolve("engines/build/classes/java/main"),
+            repoRoot.resolve("engines/build/classes/java/test"),
+            repoRoot.resolve("core/build/classes/java/main"),
+            project.project(":engines").configurations.getByName("runtimeClasspath"),
+            project.project(":core").configurations.getByName("runtimeClasspath"),
+        ).asPath
+
+fun externalComparisonScriptCommand(
+    repoRoot: File,
+    javaExecutable: String,
+    statecraftClasspath: String,
+    outputDir: File,
+    profile: String,
+    timedRuns: Int,
+): List<String> =
+    listOf(
+        "python3",
+        repoRoot.resolve("scripts/benchmark/comparison/run_comparison.py").absolutePath,
+        "--fixtures",
+        repoRoot.resolve("scripts/benchmark/comparison/fixtures.json").absolutePath,
+        "--profile",
+        profile,
+        "--output-dir",
+        outputDir.absolutePath,
+        "--java-executable",
+        javaExecutable,
+        "--statecraft-classpath",
+        statecraftClasspath,
+        "--statecraft-main-class",
+        "com.omaarr90.statecraft.engines.comparison.StatecraftComparisonRunner",
+        "--statecraft-parallelism",
+        "1",
+        "--timed-runs",
+        timedRuns.toString(),
+        "--require-external",
+    )
+
 abstract class BenchmarkValidationReportTask
     @Inject
     constructor(
@@ -87,8 +136,20 @@ abstract class BenchmarkValidationReportTask
         @get:Input
         abstract val runs: org.gradle.api.provider.Property<Int>
 
+        @get:Input
+        abstract val includeExternalComparisons: org.gradle.api.provider.Property<Boolean>
+
+        @get:Input
+        abstract val comparisonProfile: org.gradle.api.provider.Property<String>
+
+        @get:Input
+        abstract val comparisonRuns: org.gradle.api.provider.Property<Int>
+
         @get:OutputDirectory
         abstract val outputDir: DirectoryProperty
+
+        @get:OutputDirectory
+        abstract val comparisonOutputDir: DirectoryProperty
 
         @get:OutputFile
         abstract val reportFile: RegularFileProperty
@@ -119,6 +180,9 @@ abstract class BenchmarkValidationReportTask
                 )
             val benchmarkClassPath = classPathEntries.joinToString(pathSeparator)
             val benchmarkMainClass = "com.omaarr90.statecraft.engines.statevector.StatevectorKernelMicrobenchmark"
+            val comparisonOutputDirFile = comparisonOutputDir.get().asFile
+            val comparisonProfileValue = comparisonProfile.get()
+            val comparisonRunsValue = comparisonRuns.get()
 
             val nowLocal = ZonedDateTime.now(ZoneId.systemDefault())
             val nowUtc = OffsetDateTime.now(ZoneId.of("UTC"))
@@ -148,6 +212,7 @@ abstract class BenchmarkValidationReportTask
                         languageVersion.set(JavaLanguageVersion.of(25))
                     }.get()
             val javaExecutable = javaLauncher.executablePath.asFile.absolutePath
+            val comparisonClassPath = externalComparisonClasspath(project, repoRoot)
             val javaVersion =
                 captureCommand(listOf(javaExecutable, "-version"), repoRoot, ignoreExit = false)
                     .outputLines
@@ -167,9 +232,12 @@ abstract class BenchmarkValidationReportTask
                 }
 
             val aosStats = computeStats(benchmarkRuns.map { it.aosMs })
+            val parallelAosStats = computeStats(benchmarkRuns.map { it.parallelAosMs })
             val splitStats = computeStats(benchmarkRuns.map { it.splitMs })
             val speedupStats = computeStats(benchmarkRuns.map { it.speedupX })
+            val parallelSpeedupStats = computeStats(benchmarkRuns.map { it.parallelSpeedupX })
             val worstMaxAbsDiff = benchmarkRuns.maxOfOrNull { it.maxAbsDiff } ?: 0.0
+            val worstParallelMaxAbsDiff = benchmarkRuns.maxOfOrNull { it.parallelMaxAbsDiff } ?: 0.0
 
             val suiteSummaries = parseJUnitSuites(repoRoot)
             if (suiteSummaries.isEmpty()) {
@@ -211,6 +279,30 @@ abstract class BenchmarkValidationReportTask
                         )
                     }
 
+            val externalComparisonScriptCommand =
+                externalComparisonScriptCommand(
+                    repoRoot = repoRoot,
+                    javaExecutable = javaExecutable,
+                    statecraftClasspath = comparisonClassPath,
+                    outputDir = comparisonOutputDirFile,
+                    profile = comparisonProfileValue,
+                    timedRuns = comparisonRunsValue,
+                )
+            val externalComparisonSummary =
+                if (includeExternalComparisons.get()) {
+                    execOperations.exec {
+                        commandLine(externalComparisonScriptCommand)
+                        workingDir = repoRoot
+                    }
+                    val summaryFile = comparisonOutputDirFile.resolve("comparison-summary.md")
+                    if (!summaryFile.isFile) {
+                        throw GradleException("External comparison summary was not produced: ${summaryFile.absolutePath}")
+                    }
+                    summaryFile.readText(StandardCharsets.UTF_8).trim()
+                } else {
+                    "- External comparisons were not run. Re-run with `-PincludeExternalComparisons=true -PcomparisonProfile=full`."
+                }
+
             val reportCommand =
                 buildList {
                     add(gradleInvocation)
@@ -219,7 +311,23 @@ abstract class BenchmarkValidationReportTask
                     add("-PbenchmarkRuns=${runs.get()}")
                     add("-PbenchmarkOutputDir=${outputDirFile.relativeTo(repoRoot).invariantSeparatorsPath}")
                     add("-PbenchmarkReportPath=${reportFileValue.relativeTo(repoRoot).invariantSeparatorsPath}")
+                    if (includeExternalComparisons.get()) {
+                        add("-PincludeExternalComparisons=true")
+                        add("-PcomparisonProfile=$comparisonProfileValue")
+                        add("-PcomparisonRuns=$comparisonRunsValue")
+                        add("-PcomparisonOutputDir=${comparisonOutputDirFile.relativeTo(repoRoot).invariantSeparatorsPath}")
+                    }
                 }
+
+            val externalComparisonGradleCommand =
+                listOf(
+                    gradleInvocation,
+                    "externalComparisonBenchmark",
+                    "--console=plain",
+                    "-PcomparisonProfile=$comparisonProfileValue",
+                    "-PcomparisonRuns=$comparisonRunsValue",
+                    "-PcomparisonOutputDir=${comparisonOutputDirFile.relativeTo(repoRoot).invariantSeparatorsPath}",
+                )
 
             val benchmarkCommand =
                 listOf(
@@ -242,20 +350,27 @@ abstract class BenchmarkValidationReportTask
                                     mapOf(
                                         "run" to it.run,
                                         "aos_ms" to it.aosMs,
+                                        "parallel_aos_ms" to it.parallelAosMs,
                                         "split_ms" to it.splitMs,
                                         "speedup_x" to it.speedupX,
+                                        "parallel_speedup_x" to it.parallelSpeedupX,
                                         "max_abs_diff" to it.maxAbsDiff,
+                                        "parallel_max_abs_diff" to it.parallelMaxAbsDiff,
+                                        "parallelism" to it.parallelism,
                                     )
                                 },
                             "summary" to
                                 mapOf(
                                     "aos_ms" to statsToJson(aosStats),
+                                    "parallel_aos_ms" to statsToJson(parallelAosStats),
                                     "split_ms" to statsToJson(splitStats),
                                     "speedup_x" to statsToJson(speedupStats),
+                                    "parallel_speedup_x" to statsToJson(parallelSpeedupStats),
                                 ),
                             "correctness" to
                                 mapOf(
                                     "max_abs_diff" to worstMaxAbsDiff,
+                                    "parallel_max_abs_diff" to worstParallelMaxAbsDiff,
                                 ),
                         ),
                 )
@@ -340,6 +455,10 @@ abstract class BenchmarkValidationReportTask
                                     "runs" to runs.get(),
                                     "output_dir" to outputDirFile.absolutePath,
                                     "report_path" to reportFileValue.absolutePath,
+                                    "include_external_comparisons" to includeExternalComparisons.get(),
+                                    "comparison_profile" to comparisonProfileValue,
+                                    "comparison_runs" to comparisonRunsValue,
+                                    "comparison_output_dir" to comparisonOutputDirFile.absolutePath,
                                 ),
                         ),
                 )
@@ -380,15 +499,22 @@ abstract class BenchmarkValidationReportTask
                             "- Iterations: ${runs.get()}",
                             "- Benchmark JVM command: `${renderCommand(benchmarkCommand)}`",
                             "- Classpath: `$benchmarkClassPath`",
+                            "- External comparison included: ${includeExternalComparisons.get()}",
+                            "- External comparison profile: `$comparisonProfileValue`",
+                            "- External comparison timed runs: $comparisonRunsValue",
                         ).joinToString(System.lineSeparator()),
                     "{{benchmark_run_table}}" to
                         buildString {
-                            appendLine("| Run | AoS (ms) | Split (ms) | Speedup (x) | Max abs diff |")
-                            appendLine("| --- | ---: | ---: | ---: | ---: |")
+                            appendLine(
+                                "| Run | Serial AoS (ms) | Parallel AoS (ms) | Split (ms) | Split/Serial (x) | Serial/Parallel (x) | Max abs diff | Parallel max abs diff | Parallelism |",
+                            )
+                            appendLine("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
                             benchmarkRuns.forEach {
                                 appendLine(
-                                    "| ${it.run} | ${formatDecimal3(it.aosMs)} | ${formatDecimal3(it.splitMs)} | " +
-                                        "${formatDecimal3(it.speedupX)} | ${formatScientific3(it.maxAbsDiff)} |",
+                                    "| ${it.run} | ${formatDecimal3(it.aosMs)} | ${formatDecimal3(it.parallelAosMs)} | " +
+                                        "${formatDecimal3(it.splitMs)} | ${formatDecimal3(it.speedupX)} | " +
+                                        "${formatDecimal3(it.parallelSpeedupX)} | ${formatScientific3(it.maxAbsDiff)} | " +
+                                        "${formatScientific3(it.parallelMaxAbsDiff)} | ${it.parallelism} |",
                                 )
                             }
                         }.trimEnd(),
@@ -401,15 +527,30 @@ abstract class BenchmarkValidationReportTask
                                     "${formatDecimal3(aosStats.max)} | ${formatDecimal3(aosStats.stddev)} |",
                             )
                             appendLine(
+                                "| Parallel AoS (ms) | ${formatDecimal3(parallelAosStats.mean)} | " +
+                                    "${formatDecimal3(parallelAosStats.min)} | ${formatDecimal3(parallelAosStats.max)} | " +
+                                    "${formatDecimal3(parallelAosStats.stddev)} |",
+                            )
+                            appendLine(
                                 "| Split (ms) | ${formatDecimal3(splitStats.mean)} | ${formatDecimal3(splitStats.min)} | " +
                                     "${formatDecimal3(splitStats.max)} | ${formatDecimal3(splitStats.stddev)} |",
                             )
                             appendLine(
-                                "| Speedup (x) | ${formatDecimal3(speedupStats.mean)} | ${formatDecimal3(speedupStats.min)} | " +
+                                "| Split/Serial speedup (x) | ${formatDecimal3(
+                                    speedupStats.mean,
+                                )} | ${formatDecimal3(speedupStats.min)} | " +
                                     "${formatDecimal3(speedupStats.max)} | ${formatDecimal3(speedupStats.stddev)} |",
+                            )
+                            appendLine(
+                                "| Serial/Parallel speedup (x) | ${formatDecimal3(parallelSpeedupStats.mean)} | " +
+                                    "${formatDecimal3(parallelSpeedupStats.min)} | " +
+                                    "${formatDecimal3(parallelSpeedupStats.max)} | " +
+                                    "${formatDecimal3(parallelSpeedupStats.stddev)} |",
                             )
                             appendLine()
                             append("- Worst max abs diff: ${formatScientific3(worstMaxAbsDiff)}")
+                            appendLine()
+                            append("- Worst parallel max abs diff: ${formatScientific3(worstParallelMaxAbsDiff)}")
                         },
                     "{{validation_summary}}" to
                         listOf(
@@ -443,10 +584,16 @@ abstract class BenchmarkValidationReportTask
                                 )
                             }
                         }.trimEnd(),
+                    "{{external_comparison_summary}}" to externalComparisonSummary,
                     "{{repro_commands}}" to
                         buildString {
                             appendLine("```bash")
                             appendLine(renderCommand(reportCommand))
+                            appendLine(renderCommand(externalComparisonGradleCommand))
+                            if (includeExternalComparisons.get()) {
+                                appendLine("# Direct harness command used by the report task:")
+                                appendLine(renderCommand(externalComparisonScriptCommand))
+                            }
                             appendLine("```")
                         }.trimEnd(),
                 )
@@ -541,9 +688,21 @@ abstract class BenchmarkValidationReportTask
             return BenchmarkRun(
                 run = runIndex,
                 aosMs = parse("""AoS kernels:\s*([0-9]+(?:\.[0-9]+)?)\s*ms""", "AoS kernels"),
+                parallelAosMs = parse("""Parallel AoS kernels:\s*([0-9]+(?:\.[0-9]+)?)\s*ms""", "Parallel AoS kernels"),
                 splitMs = parse("""Split reference:\s*([0-9]+(?:\.[0-9]+)?)\s*ms""", "Split reference"),
                 speedupX = parse("""Speedup\s*\(split/AoS\):\s*([0-9]+(?:\.[0-9]+)?)x""", "Speedup"),
+                parallelSpeedupX =
+                    parse(
+                        """Speedup\s*\(AoS/parallel AoS\):\s*([0-9]+(?:\.[0-9]+)?)x""",
+                        "Parallel speedup",
+                    ),
                 maxAbsDiff = parse("""Max\s+\|.\|:\s*([0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)""", "Max abs diff"),
+                parallelMaxAbsDiff =
+                    parse(
+                        """Parallel max\s+\|.\|:\s*([0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)""",
+                        "Parallel max abs diff",
+                    ),
+                parallelism = parse("""Parallelism:\s*([0-9]+)""", "Parallelism").toInt(),
             )
         }
 
@@ -741,13 +900,153 @@ abstract class BenchmarkValidationReportTask
 val benchmarkRuns = providers.gradleProperty("benchmarkRuns").orNull?.toInt() ?: 5
 val benchmarkOutputDir = providers.gradleProperty("benchmarkOutputDir").orNull ?: "build/reports/benchmark-validation"
 val benchmarkReportPath = providers.gradleProperty("benchmarkReportPath").orNull ?: "docs/deliverables/benchmark-validation-report.md"
+val includeExternalComparisonsProvider =
+    providers.gradleProperty("includeExternalComparisons").map(String::toBoolean).orElse(false)
+val comparisonProfileProvider = providers.gradleProperty("comparisonProfile").orElse("smoke")
+val comparisonRunsProvider = providers.gradleProperty("comparisonRuns").map(String::toInt).orElse(5)
+val comparisonOutputDirProvider =
+    providers.gradleProperty("comparisonOutputDir").orElse("$benchmarkOutputDir/external-comparison")
 
-tasks.register<BenchmarkValidationReportTask>("benchmarkValidationReport") {
+tasks.register("externalComparisonBenchmark") {
+    group = "verification"
+    description = "Runs CPU-only StateCraft, Qiskit Aer, and QuEST comparison fixtures."
+    dependsOn(":engines:compileTestJava")
+    inputs.property("comparisonProfile", comparisonProfileProvider)
+    inputs.property("comparisonRuns", comparisonRunsProvider)
+    outputs.dir(file(comparisonOutputDirProvider.get()))
+    outputs.upToDateWhen { false }
+    doLast {
+        val repoRoot = project.rootDir
+        val javaCompiler =
+            project
+                .project(":core")
+                .tasks
+                .named("compileJava", JavaCompile::class.java)
+                .get()
+                .javaCompiler
+                .get()
+        val javaExecutable =
+            javaCompiler.metadata.installationPath
+                .file("bin/java")
+                .asFile.absolutePath
+        val command =
+            externalComparisonScriptCommand(
+                repoRoot = repoRoot,
+                javaExecutable = javaExecutable,
+                statecraftClasspath = externalComparisonClasspath(project, repoRoot),
+                outputDir = file(comparisonOutputDirProvider.get()),
+                profile = comparisonProfileProvider.get(),
+                timedRuns = comparisonRunsProvider.get(),
+            )
+        val process =
+            ProcessBuilder(command)
+                .directory(repoRoot)
+                .redirectErrorStream(true)
+                .start()
+        val output =
+            process.inputStream
+                .bufferedReader(StandardCharsets.UTF_8)
+                .readText()
+                .trimEnd()
+        val exitCode = process.waitFor()
+        if (output.isNotBlank()) {
+            logger.lifecycle(output)
+        }
+        if (exitCode != 0) {
+            throw GradleException("External comparison command failed ($exitCode): ${command.joinToString(" ")}")
+        }
+    }
+}
+
+tasks.register("benchmarkValidationReport") {
     group = "verification"
     description = "Runs the statevector microbenchmark and writes benchmark/validation report artifacts."
     dependsOn(":engines:compileTestJava", ":app:test", ":core:test", ":engines:test")
-    runs.convention(benchmarkRuns)
-    outputDir.set(file(benchmarkOutputDir))
-    reportFile.set(file(benchmarkReportPath))
+    inputs.property("benchmarkRuns", benchmarkRuns)
+    inputs.property("includeExternalComparisons", includeExternalComparisonsProvider)
+    inputs.property("comparisonProfile", comparisonProfileProvider)
+    inputs.property("comparisonRuns", comparisonRunsProvider)
+    outputs.dir(file(benchmarkOutputDir))
+    outputs.dir(file(comparisonOutputDirProvider.get()))
+    outputs.file(file(benchmarkReportPath))
     outputs.upToDateWhen { false }
+    doLast {
+        val repoRoot = project.rootDir
+        val javaCompiler =
+            project
+                .project(":core")
+                .tasks
+                .named("compileJava", JavaCompile::class.java)
+                .get()
+                .javaCompiler
+                .get()
+        val javaExecutable =
+            javaCompiler.metadata.installationPath
+                .file("bin/java")
+                .asFile.absolutePath
+        val pathSeparator = File.pathSeparator
+        val benchmarkClassPath =
+            listOf(
+                "engines/build/classes/java/main",
+                "engines/build/classes/java/test",
+                "core/build/classes/java/main",
+            ).joinToString(pathSeparator)
+        val isWindows = System.getProperty("os.name").lowercase(Locale.US).contains("win")
+        val gradleInvocation = if (isWindows) ".\\gradlew.bat" else "./gradlew"
+        val command =
+            listOf(
+                "python3",
+                repoRoot.resolve("scripts/benchmark/generate_validation_report.py").absolutePath,
+                "--repo-root",
+                repoRoot.absolutePath,
+                "--runs",
+                benchmarkRuns.toString(),
+                "--output-dir",
+                file(benchmarkOutputDir).absolutePath,
+                "--report-file",
+                file(benchmarkReportPath).absolutePath,
+                "--java-executable",
+                javaExecutable,
+                "--benchmark-classpath",
+                benchmarkClassPath,
+                "--benchmark-main-class",
+                "com.omaarr90.statecraft.engines.statevector.StatevectorKernelMicrobenchmark",
+                "--statecraft-classpath",
+                externalComparisonClasspath(project, repoRoot),
+                "--gradle-invocation",
+                gradleInvocation,
+                "--gradle-version",
+                GradleVersion.current().version,
+            ) +
+                buildList {
+                    if (includeExternalComparisonsProvider.get()) {
+                        add("--include-external-comparisons")
+                    }
+                    add("--comparison-profile")
+                    add(comparisonProfileProvider.get())
+                    add("--comparison-runs")
+                    add(comparisonRunsProvider.get().toString())
+                    add("--comparison-output-dir")
+                    add(file(comparisonOutputDirProvider.get()).absolutePath)
+                }
+        val process =
+            ProcessBuilder(command)
+                .directory(repoRoot)
+                .redirectErrorStream(true)
+                .start()
+        val output =
+            process.inputStream
+                .bufferedReader(StandardCharsets.UTF_8)
+                .readText()
+                .trimEnd()
+        val exitCode = process.waitFor()
+        if (output.isNotBlank()) {
+            logger.lifecycle(output)
+        }
+        if (exitCode != 0) {
+            throw GradleException(
+                "Benchmark validation report command failed ($exitCode): ${command.joinToString(" ")}",
+            )
+        }
+    }
 }

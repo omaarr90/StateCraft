@@ -85,6 +85,30 @@ class StatecraftCliTest {
 	}
 
 	@Test
+	void demoAcceptsStatevectorParallelism() {
+		StringWriter out = new StringWriter();
+		CommandLine cli = new CommandLine(new StatecraftCli());
+		cli.setOut(new PrintWriter(out, true));
+		cli.setErr(new PrintWriter(new StringWriter(), true));
+
+		int exitCode = cli.execute("demo", "--statevector-parallelism", "2");
+		assertEquals(CommandLine.ExitCode.OK, exitCode);
+		assertTrue(out.toString().contains("Bell-state demo"));
+	}
+
+	@Test
+	void statevectorParallelismMustBePositive() {
+		StringWriter err = new StringWriter();
+		CommandLine cli = new CommandLine(new StatecraftCli());
+		cli.setOut(new PrintWriter(new StringWriter(), true));
+		cli.setErr(new PrintWriter(err, true));
+
+		int exitCode = cli.execute("demo", "--statevector-parallelism", "0");
+		assertEquals(CommandLine.ExitCode.USAGE, exitCode);
+		assertTrue(err.toString().contains("--statevector-parallelism must be at least 1"));
+	}
+
+	@Test
 	void runPrintsLargeBitstringHistogram() throws IOException {
 		Path input = Files.createTempFile("statecraft-large", ".json");
 		Files.writeString(input, """
@@ -106,6 +130,27 @@ class StatecraftCliTest {
 		String output = out.toString();
 		assertTrue(output.contains("Final amplitudes omitted"));
 		assertTrue(output.contains("0000000000000000000000000000000000000000 : 2"));
+	}
+
+	@Test
+	void runRejectsStatevectorParallelismForOtherEngines() throws IOException {
+		Path input = Files.createTempFile("statecraft-stabilizer-parallelism", ".json");
+		Files.writeString(input, """
+				{
+				  "qubits": 1,
+				  "operations": []
+				}
+				""");
+
+		StringWriter err = new StringWriter();
+		CommandLine cli = new CommandLine(new StatecraftCli());
+		cli.setOut(new PrintWriter(new StringWriter(), true));
+		cli.setErr(new PrintWriter(err, true));
+
+		int exitCode = cli.execute("run", "--input", input.toString(), "--format", "json", "--engine", "stabilizer",
+				"--statevector-parallelism", "2", "--shots", "1", "--omit-final-state");
+		assertEquals(CommandLine.ExitCode.USAGE, exitCode);
+		assertTrue(err.toString().contains("--statevector-parallelism can only be used with --engine statevector"));
 	}
 
 	@Test

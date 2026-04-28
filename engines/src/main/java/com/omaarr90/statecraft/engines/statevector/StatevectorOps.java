@@ -83,6 +83,48 @@ public final class StatevectorOps {
 		}
 	}
 
+	static void applySingleGate(double[] state, StatevectorParallelExecutor executor, int target, double g00r,
+			double g00i, double g01r, double g01i, double g10r, double g10i, double g11r, double g11i) {
+		int dimension = state.length >> 1;
+		int pairCount = dimension >> 1;
+		if (executor == null || !executor.shouldParallelize(pairCount)) {
+			applySingleGate(state, target, g00r, g00i, g01r, g01i, g10r, g10i, g11r, g11i);
+			return;
+		}
+
+		DoubleVector g00rVec = null;
+		DoubleVector g00iVec = null;
+		DoubleVector g01rVec = null;
+		DoubleVector g01iVec = null;
+		DoubleVector g10rVec = null;
+		DoubleVector g10iVec = null;
+		DoubleVector g11rVec = null;
+		DoubleVector g11iVec = null;
+		if (VECTOR_COMPLEX_AVAILABLE) {
+			g00rVec = DoubleVector.broadcast(SPECIES, g00r);
+			g00iVec = DoubleVector.broadcast(SPECIES, g00i);
+			g01rVec = DoubleVector.broadcast(SPECIES, g01r);
+			g01iVec = DoubleVector.broadcast(SPECIES, g01i);
+			g10rVec = DoubleVector.broadcast(SPECIES, g10r);
+			g10iVec = DoubleVector.broadcast(SPECIES, g10i);
+			g11rVec = DoubleVector.broadcast(SPECIES, g11r);
+			g11iVec = DoubleVector.broadcast(SPECIES, g11i);
+		}
+		DoubleVector finalG00rVec = g00rVec;
+		DoubleVector finalG00iVec = g00iVec;
+		DoubleVector finalG01rVec = g01rVec;
+		DoubleVector finalG01iVec = g01iVec;
+		DoubleVector finalG10rVec = g10rVec;
+		DoubleVector finalG10iVec = g10iVec;
+		DoubleVector finalG11rVec = g11rVec;
+		DoubleVector finalG11iVec = g11iVec;
+
+		executor.forRange(pairCount,
+				(startInclusive, endExclusive) -> applySingleGatePairs(state, target, startInclusive, endExclusive,
+						g00r, g00i, g01r, g01i, g10r, g10i, g11r, g11i, finalG00rVec, finalG00iVec, finalG01rVec,
+						finalG01iVec, finalG10rVec, finalG10iVec, finalG11rVec, finalG11iVec));
+	}
+
 	public static void applyCnot(double[] state, int control, int target) {
 		int controlMask = 1 << control;
 		int targetMask = 1 << target;
@@ -100,6 +142,33 @@ public final class StatevectorOps {
 				state[offFlipped + 1] = tmpI;
 			}
 		}
+	}
+
+	static void applyCnot(double[] state, StatevectorParallelExecutor executor, int control, int target) {
+		int dimension = state.length >> 1;
+		int pairCount = dimension >> 1;
+		if (executor == null || !executor.shouldParallelize(pairCount)) {
+			applyCnot(state, control, target);
+			return;
+		}
+		int controlMask = 1 << control;
+		int targetMask = 1 << target;
+		executor.forRange(pairCount, (startInclusive, endExclusive) -> {
+			for (int pair = startInclusive; pair < endExclusive; pair++) {
+				int index = expandIndexWithZeroBit(pair, target);
+				if ((index & controlMask) == controlMask) {
+					int flipped = index | targetMask;
+					int offIndex = toDoubleIndex(index);
+					int offFlipped = toDoubleIndex(flipped);
+					double tmpR = state[offIndex];
+					double tmpI = state[offIndex + 1];
+					state[offIndex] = state[offFlipped];
+					state[offIndex + 1] = state[offFlipped + 1];
+					state[offFlipped] = tmpR;
+					state[offFlipped + 1] = tmpI;
+				}
+			}
+		});
 	}
 
 	public static void applyTwoQubitUnitary(double[] state, int first, int second, double[] matrixReal,
@@ -316,6 +385,27 @@ public final class StatevectorOps {
 		}
 	}
 
+	static void applyTwoQubitUnitary(double[] state, StatevectorParallelExecutor executor, int first, int second,
+			double[] matrixReal, double[] matrixImag) {
+		int dimension = state.length >> 1;
+		int groupCount = dimension >> 2;
+		if (executor == null || !executor.shouldParallelize(groupCount)) {
+			applyTwoQubitUnitary(state, first, second, matrixReal, matrixImag);
+			return;
+		}
+		int low = Math.min(first, second);
+		int high = Math.max(first, second);
+		boolean firstIsLow = first == low;
+		int lowMask = 1 << low;
+		int highMask = 1 << high;
+		int offsetFirst = firstIsLow ? lowMask : highMask;
+		int offsetSecond = firstIsLow ? highMask : lowMask;
+		int offsetBoth = lowMask | highMask;
+
+		executor.forRange(groupCount, (startInclusive, endExclusive) -> applyTwoQubitUnitaryGroups(state, low, high,
+				offsetFirst, offsetSecond, offsetBoth, matrixReal, matrixImag, startInclusive, endExclusive));
+	}
+
 	public static void applyTwoQubitDiagonal(double[] state, int first, int second, double[] diagonalReal,
 			double[] diagonalImag) {
 		int low = Math.min(first, second);
@@ -429,6 +519,27 @@ public final class StatevectorOps {
 		}
 	}
 
+	static void applyTwoQubitDiagonal(double[] state, StatevectorParallelExecutor executor, int first, int second,
+			double[] diagonalReal, double[] diagonalImag) {
+		int dimension = state.length >> 1;
+		int groupCount = dimension >> 2;
+		if (executor == null || !executor.shouldParallelize(groupCount)) {
+			applyTwoQubitDiagonal(state, first, second, diagonalReal, diagonalImag);
+			return;
+		}
+		int low = Math.min(first, second);
+		int high = Math.max(first, second);
+		boolean firstIsLow = first == low;
+		int lowMask = 1 << low;
+		int highMask = 1 << high;
+		int offsetFirst = firstIsLow ? lowMask : highMask;
+		int offsetSecond = firstIsLow ? highMask : lowMask;
+		int offsetBoth = lowMask | highMask;
+
+		executor.forRange(groupCount, (startInclusive, endExclusive) -> applyTwoQubitDiagonalGroups(state, low, high,
+				offsetFirst, offsetSecond, offsetBoth, diagonalReal, diagonalImag, startInclusive, endExclusive));
+	}
+
 	public static void applySwap(double[] state, int first, int second) {
 		int low = Math.min(first, second);
 		int high = Math.max(first, second);
@@ -482,6 +593,39 @@ public final class StatevectorOps {
 				}
 			}
 		}
+	}
+
+	static void applySwap(double[] state, StatevectorParallelExecutor executor, int first, int second) {
+		int dimension = state.length >> 1;
+		int groupCount = dimension >> 2;
+		if (executor == null || !executor.shouldParallelize(groupCount)) {
+			applySwap(state, first, second);
+			return;
+		}
+		int low = Math.min(first, second);
+		int high = Math.max(first, second);
+		boolean firstIsLow = first == low;
+		int lowMask = 1 << low;
+		int highMask = 1 << high;
+		int offsetFirst = firstIsLow ? lowMask : highMask;
+		int offsetSecond = firstIsLow ? highMask : lowMask;
+
+		executor.forRange(groupCount, (startInclusive, endExclusive) -> {
+			for (int group = startInclusive; group < endExclusive; group++) {
+				int baseIndex = expandIndexWithZeroBits(group, low, high);
+				int idxFirst = baseIndex + offsetFirst;
+				int idxSecond = baseIndex + offsetSecond;
+				int offFirst = toDoubleIndex(idxFirst);
+				int offSecond = toDoubleIndex(idxSecond);
+
+				double firstR = state[offFirst];
+				double firstI = state[offFirst + 1];
+				state[offFirst] = state[offSecond];
+				state[offFirst + 1] = state[offSecond + 1];
+				state[offSecond] = firstR;
+				state[offSecond + 1] = firstI;
+			}
+		});
 	}
 
 	public static void applyMultiControlledSingleGate(double[] state, int target, int controlMask, double g00r,
@@ -558,6 +702,275 @@ public final class StatevectorOps {
 		}
 	}
 
+	static void applyMultiControlledSingleGate(double[] state, StatevectorParallelExecutor executor, int target,
+			int controlMask, double g00r, double g00i, double g01r, double g01i, double g10r, double g10i, double g11r,
+			double g11i) {
+		int dimension = state.length >> 1;
+		int pairCount = dimension >> 1;
+		if (executor == null || !executor.shouldParallelize(pairCount)) {
+			applyMultiControlledSingleGate(state, target, controlMask, g00r, g00i, g01r, g01i, g10r, g10i, g11r, g11i);
+			return;
+		}
+
+		DoubleVector g00rVec = null;
+		DoubleVector g00iVec = null;
+		DoubleVector g01rVec = null;
+		DoubleVector g01iVec = null;
+		DoubleVector g10rVec = null;
+		DoubleVector g10iVec = null;
+		DoubleVector g11rVec = null;
+		DoubleVector g11iVec = null;
+		if (VECTOR_COMPLEX_AVAILABLE) {
+			g00rVec = DoubleVector.broadcast(SPECIES, g00r);
+			g00iVec = DoubleVector.broadcast(SPECIES, g00i);
+			g01rVec = DoubleVector.broadcast(SPECIES, g01r);
+			g01iVec = DoubleVector.broadcast(SPECIES, g01i);
+			g10rVec = DoubleVector.broadcast(SPECIES, g10r);
+			g10iVec = DoubleVector.broadcast(SPECIES, g10i);
+			g11rVec = DoubleVector.broadcast(SPECIES, g11r);
+			g11iVec = DoubleVector.broadcast(SPECIES, g11i);
+		}
+		DoubleVector finalG00rVec = g00rVec;
+		DoubleVector finalG00iVec = g00iVec;
+		DoubleVector finalG01rVec = g01rVec;
+		DoubleVector finalG01iVec = g01iVec;
+		DoubleVector finalG10rVec = g10rVec;
+		DoubleVector finalG10iVec = g10iVec;
+		DoubleVector finalG11rVec = g11rVec;
+		DoubleVector finalG11iVec = g11iVec;
+
+		executor.forRange(pairCount,
+				(startInclusive, endExclusive) -> applyMultiControlledSingleGatePairs(state, target, controlMask,
+						startInclusive, endExclusive, g00r, g00i, g01r, g01i, g10r, g10i, g11r, g11i, finalG00rVec,
+						finalG00iVec, finalG01rVec, finalG01iVec, finalG10rVec, finalG10iVec, finalG11rVec,
+						finalG11iVec));
+	}
+
+	private static void applySingleGatePairs(double[] state, int target, int startPair, int endPair, double g00r,
+			double g00i, double g01r, double g01i, double g10r, double g10i, double g11r, double g11i,
+			DoubleVector g00rVec, DoubleVector g00iVec, DoubleVector g01rVec, DoubleVector g01iVec,
+			DoubleVector g10rVec, DoubleVector g10iVec, DoubleVector g11rVec, DoubleVector g11iVec) {
+		int stride = 1 << target;
+		int period = stride << 1;
+		int pair = startPair;
+		while (pair < endPair) {
+			int offset = pair % stride;
+			int base = (pair / stride) * period;
+			int pairsInBlock = Math.min(stride - offset, endPair - pair);
+			int processed = 0;
+			int vectorPairs = VECTOR_COMPLEX_AVAILABLE ? pairsInBlock - (pairsInBlock % COMPLEX_PER_VECTOR) : 0;
+			for (; processed < vectorPairs; processed += COMPLEX_PER_VECTOR) {
+				int idx0 = base + offset + processed;
+				int idx1 = idx0 + stride;
+				int off0 = toDoubleIndex(idx0);
+				int off1 = toDoubleIndex(idx1);
+
+				DoubleVector a0 = DoubleVector.fromArray(SPECIES, state, off0);
+				DoubleVector a1 = DoubleVector.fromArray(SPECIES, state, off1);
+
+				DoubleVector new0 = complexMul(a0, g00rVec, g00iVec).add(complexMul(a1, g01rVec, g01iVec));
+				DoubleVector new1 = complexMul(a0, g10rVec, g10iVec).add(complexMul(a1, g11rVec, g11iVec));
+
+				new0.intoArray(state, off0);
+				new1.intoArray(state, off1);
+			}
+			for (; processed < pairsInBlock; processed++) {
+				int idx0 = base + offset + processed;
+				int idx1 = idx0 + stride;
+				applySingleGatePair(state, idx0, idx1, g00r, g00i, g01r, g01i, g10r, g10i, g11r, g11i);
+			}
+			pair += pairsInBlock;
+		}
+	}
+
+	private static void applyMultiControlledSingleGatePairs(double[] state, int target, int controlMask, int startPair,
+			int endPair, double g00r, double g00i, double g01r, double g01i, double g10r, double g10i, double g11r,
+			double g11i, DoubleVector g00rVec, DoubleVector g00iVec, DoubleVector g01rVec, DoubleVector g01iVec,
+			DoubleVector g10rVec, DoubleVector g10iVec, DoubleVector g11rVec, DoubleVector g11iVec) {
+		int stride = 1 << target;
+		int period = stride << 1;
+		int pair = startPair;
+		while (pair < endPair) {
+			int offset = pair % stride;
+			int base = (pair / stride) * period;
+			int pairsInBlock = Math.min(stride - offset, endPair - pair);
+			int processed = 0;
+			int vectorPairs = VECTOR_COMPLEX_AVAILABLE ? pairsInBlock - (pairsInBlock % COMPLEX_PER_VECTOR) : 0;
+			for (; processed < vectorPairs; processed += COMPLEX_PER_VECTOR) {
+				int idx0 = base + offset + processed;
+				VectorMask<Double> laneMask = maskForControls(idx0, controlMask);
+				if (!laneMask.anyTrue()) {
+					continue;
+				}
+				int idx1 = idx0 + stride;
+				int off0 = toDoubleIndex(idx0);
+				int off1 = toDoubleIndex(idx1);
+
+				DoubleVector a0 = DoubleVector.fromArray(SPECIES, state, off0);
+				DoubleVector a1 = DoubleVector.fromArray(SPECIES, state, off1);
+
+				DoubleVector new0 = complexMul(a0, g00rVec, g00iVec).add(complexMul(a1, g01rVec, g01iVec));
+				DoubleVector new1 = complexMul(a0, g10rVec, g10iVec).add(complexMul(a1, g11rVec, g11iVec));
+
+				new0.intoArray(state, off0, laneMask);
+				new1.intoArray(state, off1, laneMask);
+			}
+			for (; processed < pairsInBlock; processed++) {
+				int idx0 = base + offset + processed;
+				if ((idx0 & controlMask) != controlMask) {
+					continue;
+				}
+				int idx1 = idx0 + stride;
+				applySingleGatePair(state, idx0, idx1, g00r, g00i, g01r, g01i, g10r, g10i, g11r, g11i);
+			}
+			pair += pairsInBlock;
+		}
+	}
+
+	private static void applySingleGatePair(double[] state, int idx0, int idx1, double g00r, double g00i, double g01r,
+			double g01i, double g10r, double g10i, double g11r, double g11i) {
+		int off0 = toDoubleIndex(idx0);
+		int off1 = toDoubleIndex(idx1);
+
+		double a0r = state[off0];
+		double a0i = state[off0 + 1];
+		double a1r = state[off1];
+		double a1i = state[off1 + 1];
+
+		double new0r = g00r * a0r - g00i * a0i + g01r * a1r - g01i * a1i;
+		double new0i = g00r * a0i + g00i * a0r + g01r * a1i + g01i * a1r;
+		double new1r = g10r * a0r - g10i * a0i + g11r * a1r - g11i * a1i;
+		double new1i = g10r * a0i + g10i * a0r + g11r * a1i + g11i * a1r;
+
+		state[off0] = new0r;
+		state[off0 + 1] = new0i;
+		state[off1] = new1r;
+		state[off1 + 1] = new1i;
+	}
+
+	private static void applyTwoQubitUnitaryGroups(double[] state, int low, int high, int offsetFirst, int offsetSecond,
+			int offsetBoth, double[] matrixReal, double[] matrixImag, int startGroup, int endGroup) {
+		double m00r = matrixReal[0];
+		double m00i = matrixImag[0];
+		double m01r = matrixReal[1];
+		double m01i = matrixImag[1];
+		double m02r = matrixReal[2];
+		double m02i = matrixImag[2];
+		double m03r = matrixReal[3];
+		double m03i = matrixImag[3];
+
+		double m10r = matrixReal[4];
+		double m10i = matrixImag[4];
+		double m11r = matrixReal[5];
+		double m11i = matrixImag[5];
+		double m12r = matrixReal[6];
+		double m12i = matrixImag[6];
+		double m13r = matrixReal[7];
+		double m13i = matrixImag[7];
+
+		double m20r = matrixReal[8];
+		double m20i = matrixImag[8];
+		double m21r = matrixReal[9];
+		double m21i = matrixImag[9];
+		double m22r = matrixReal[10];
+		double m22i = matrixImag[10];
+		double m23r = matrixReal[11];
+		double m23i = matrixImag[11];
+
+		double m30r = matrixReal[12];
+		double m30i = matrixImag[12];
+		double m31r = matrixReal[13];
+		double m31i = matrixImag[13];
+		double m32r = matrixReal[14];
+		double m32i = matrixImag[14];
+		double m33r = matrixReal[15];
+		double m33i = matrixImag[15];
+
+		for (int group = startGroup; group < endGroup; group++) {
+			int baseIndex = expandIndexWithZeroBits(group, low, high);
+			int idx01 = baseIndex + offsetSecond;
+			int idx10 = baseIndex + offsetFirst;
+			int idx11 = baseIndex + offsetBoth;
+
+			int off00 = toDoubleIndex(baseIndex);
+			int off01 = toDoubleIndex(idx01);
+			int off10 = toDoubleIndex(idx10);
+			int off11 = toDoubleIndex(idx11);
+
+			double a00r = state[off00];
+			double a00i = state[off00 + 1];
+			double a01r = state[off01];
+			double a01i = state[off01 + 1];
+			double a10r = state[off10];
+			double a10i = state[off10 + 1];
+			double a11r = state[off11];
+			double a11i = state[off11 + 1];
+
+			state[off00] = m00r * a00r - m00i * a00i + m01r * a01r - m01i * a01i + m02r * a10r - m02i * a10i
+					+ m03r * a11r - m03i * a11i;
+			state[off00 + 1] = m00r * a00i + m00i * a00r + m01r * a01i + m01i * a01r + m02r * a10i + m02i * a10r
+					+ m03r * a11i + m03i * a11r;
+
+			state[off01] = m10r * a00r - m10i * a00i + m11r * a01r - m11i * a01i + m12r * a10r - m12i * a10i
+					+ m13r * a11r - m13i * a11i;
+			state[off01 + 1] = m10r * a00i + m10i * a00r + m11r * a01i + m11i * a01r + m12r * a10i + m12i * a10r
+					+ m13r * a11i + m13i * a11r;
+
+			state[off10] = m20r * a00r - m20i * a00i + m21r * a01r - m21i * a01i + m22r * a10r - m22i * a10i
+					+ m23r * a11r - m23i * a11i;
+			state[off10 + 1] = m20r * a00i + m20i * a00r + m21r * a01i + m21i * a01r + m22r * a10i + m22i * a10r
+					+ m23r * a11i + m23i * a11r;
+
+			state[off11] = m30r * a00r - m30i * a00i + m31r * a01r - m31i * a01i + m32r * a10r - m32i * a10i
+					+ m33r * a11r - m33i * a11i;
+			state[off11 + 1] = m30r * a00i + m30i * a00r + m31r * a01i + m31i * a01r + m32r * a10i + m32i * a10r
+					+ m33r * a11i + m33i * a11r;
+		}
+	}
+
+	private static void applyTwoQubitDiagonalGroups(double[] state, int low, int high, int offsetFirst,
+			int offsetSecond, int offsetBoth, double[] diagonalReal, double[] diagonalImag, int startGroup,
+			int endGroup) {
+		double d00r = diagonalReal[0];
+		double d00i = diagonalImag[0];
+		double d01r = diagonalReal[1];
+		double d01i = diagonalImag[1];
+		double d10r = diagonalReal[2];
+		double d10i = diagonalImag[2];
+		double d11r = diagonalReal[3];
+		double d11i = diagonalImag[3];
+
+		for (int group = startGroup; group < endGroup; group++) {
+			int baseIndex = expandIndexWithZeroBits(group, low, high);
+			int idx01 = baseIndex + offsetSecond;
+			int idx10 = baseIndex + offsetFirst;
+			int idx11 = baseIndex + offsetBoth;
+
+			int off00 = toDoubleIndex(baseIndex);
+			int off01 = toDoubleIndex(idx01);
+			int off10 = toDoubleIndex(idx10);
+			int off11 = toDoubleIndex(idx11);
+
+			double a00r = state[off00];
+			double a00i = state[off00 + 1];
+			double a01r = state[off01];
+			double a01i = state[off01 + 1];
+			double a10r = state[off10];
+			double a10i = state[off10 + 1];
+			double a11r = state[off11];
+			double a11i = state[off11 + 1];
+
+			state[off00] = d00r * a00r - d00i * a00i;
+			state[off00 + 1] = d00r * a00i + d00i * a00r;
+			state[off01] = d01r * a01r - d01i * a01i;
+			state[off01 + 1] = d01r * a01i + d01i * a01r;
+			state[off10] = d10r * a10r - d10i * a10i;
+			state[off10 + 1] = d10r * a10i + d10i * a10r;
+			state[off11] = d11r * a11r - d11i * a11i;
+			state[off11 + 1] = d11r * a11i + d11i * a11r;
+		}
+	}
+
 	private static DoubleVector complexMul(DoubleVector value, DoubleVector realCoeff, DoubleVector imagCoeff) {
 		DoubleVector realTerm = value.mul(realCoeff);
 		DoubleVector imagTerm = value.rearrange(SWAP_SHUFFLE).mul(imagCoeff);
@@ -566,6 +979,23 @@ public final class StatevectorOps {
 
 	private static int toDoubleIndex(int complexIndex) {
 		return complexIndex << 1;
+	}
+
+	private static int expandIndexWithZeroBit(int compressedIndex, int zeroBit) {
+		int lowMask = (1 << zeroBit) - 1;
+		int low = compressedIndex & lowMask;
+		int high = compressedIndex & ~lowMask;
+		return (high << 1) | low;
+	}
+
+	private static int expandIndexWithZeroBits(int compressedIndex, int lowZeroBit, int highZeroBit) {
+		int lowMask = (1 << lowZeroBit) - 1;
+		int low = compressedIndex & lowMask;
+		int middleWidth = highZeroBit - lowZeroBit - 1;
+		int middleMask = (1 << middleWidth) - 1;
+		int middle = (compressedIndex >>> lowZeroBit) & middleMask;
+		int high = compressedIndex >>> (highZeroBit - 1);
+		return low | (middle << (lowZeroBit + 1)) | (high << (highZeroBit + 1));
 	}
 
 	private static VectorShuffle<Double> buildSwapShuffle() {

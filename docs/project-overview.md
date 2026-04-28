@@ -66,6 +66,8 @@ circuit files.
 - full support for the current circuit model
 - seeded measurement sampling
 - seeded noise application after each unitary gate
+- ForkJoin data-parallel execution for large dense state updates, configurable
+  in the CLI with `--statevector-parallelism <threads>`
 - dense mode limit of 29 qubits
 
 ### Stabilizer engine

@@ -27,6 +27,7 @@ public final class StatevectorKernelMicrobenchmark {
 	private static final int QUBITS = 16;
 	private static final int GATE_COUNT = 384;
 	private static final int ITERATIONS = 64;
+	private static final int PARALLELISM = Math.max(2, Runtime.getRuntime().availableProcessors());
 
 	private StatevectorKernelMicrobenchmark() {
 	}
@@ -39,14 +40,18 @@ public final class StatevectorKernelMicrobenchmark {
 		warmUp(baseline.clone(), gates);
 
 		RunResult aoS = runAoS(baseline.clone(), gates, ITERATIONS);
+		RunResult parallelAoS = runParallelAoS(baseline.clone(), gates, ITERATIONS);
 		RunResult split = runSplit(baseline.clone(), gates, ITERATIONS);
 
 		double maxDiff = maxAbsDiff(aoS.state(), split.state());
+		double parallelMaxDiff = maxAbsDiff(aoS.state(), parallelAoS.state());
 		double ratio = (double) split.nanos() / (double) aoS.nanos();
+		double parallelRatio = (double) aoS.nanos() / (double) parallelAoS.nanos();
 
 		System.out.printf(Locale.US,
-				"AoS kernels: %.3f ms%nSplit reference: %.3f ms%nSpeedup (split/AoS): %.2fx%nMax |Δ|: %.3e%n",
-				aoS.nanos() / 1_000_000.0, split.nanos() / 1_000_000.0, ratio, maxDiff);
+				"AoS kernels: %.3f ms%nParallel AoS kernels: %.3f ms%nSplit reference: %.3f ms%nSpeedup (split/AoS): %.2fx%nSpeedup (AoS/parallel AoS): %.2fx%nMax |Δ|: %.3e%nParallel max |Δ|: %.3e%nParallelism: %d%n",
+				aoS.nanos() / 1_000_000.0, parallelAoS.nanos() / 1_000_000.0, split.nanos() / 1_000_000.0, ratio,
+				parallelRatio, maxDiff, parallelMaxDiff, PARALLELISM);
 	}
 
 	private static void warmUp(double[] baseline, GateSpec[] gates) {
@@ -61,6 +66,20 @@ public final class StatevectorKernelMicrobenchmark {
 			for (GateSpec gate : gates) {
 				StatevectorOps.applySingleGate(state, gate.target(), gate.g00r(), gate.g00i(), gate.g01r(), gate.g01i(),
 						gate.g10r(), gate.g10i(), gate.g11r(), gate.g11i());
+			}
+		}
+		long nanos = System.nanoTime() - start;
+		return new RunResult(nanos, state);
+	}
+
+	private static RunResult runParallelAoS(double[] state, GateSpec[] gates, int iterations) {
+		StatevectorParallelExecutor executor = new StatevectorParallelExecutor(
+				StatevectorExecutionConfig.withParallelismAndMinimumWorkUnits(PARALLELISM, 1_024));
+		long start = System.nanoTime();
+		for (int iter = 0; iter < iterations; iter++) {
+			for (GateSpec gate : gates) {
+				StatevectorOps.applySingleGate(state, executor, gate.target(), gate.g00r(), gate.g00i(), gate.g01r(),
+						gate.g01i(), gate.g10r(), gate.g10i(), gate.g11r(), gate.g11i());
 			}
 		}
 		long nanos = System.nanoTime() - start;

@@ -8,6 +8,8 @@ import com.omaarr90.statecraft.core.engine.SimulatorEngine;
 import com.omaarr90.statecraft.core.parse.CircuitFormat;
 import com.omaarr90.statecraft.core.parse.CircuitParseException;
 import com.omaarr90.statecraft.core.parse.CircuitParsers;
+import com.omaarr90.statecraft.engines.statevector.StatevectorEngine;
+import com.omaarr90.statecraft.engines.statevector.StatevectorExecutionConfig;
 import com.omaarr90.statecraft.quantum.CnotGate;
 import com.omaarr90.statecraft.quantum.Hadamard;
 import com.omaarr90.statecraft.quantum.QuantumCircuit;
@@ -82,6 +84,9 @@ public final class StatecraftCli implements Callable<Integer> {
 		@Mixin
 		private NoiseOptions noiseOptions = new NoiseOptions();
 
+		@Mixin
+		private StatevectorOptions statevectorOptions = new StatevectorOptions();
+
 		@Option(names = "--shots", description = "Number of measurement shots to sample", defaultValue = "0")
 		private int shots;
 
@@ -113,6 +118,7 @@ public final class StatecraftCli implements Callable<Integer> {
 
 		private void validateOptions() {
 			CommandLine commandLine = spec.commandLine();
+			statevectorOptions.validate(commandLine);
 			if (shots < 0) {
 				throw new CommandLine.ParameterException(commandLine, "--shots must be non-negative");
 			}
@@ -129,7 +135,7 @@ public final class StatecraftCli implements Callable<Integer> {
 		}
 
 		private SimulationResult simulate(QuantumCircuit circuit, NoiseOptionsSupport.ResolvedNoiseSpec noiseSpec) {
-			SimulatorEngine engine = loadStatevectorEngine();
+			SimulatorEngine engine = loadStatevectorEngine(statevectorOptions, spec.commandLine());
 			SimulationRequest request = SimulationRequest.zeroState(circuit);
 			if (shots > 0) {
 				MeasurementInstruction instruction = samples
@@ -152,6 +158,9 @@ public final class StatecraftCli implements Callable<Integer> {
 
 		@Mixin
 		private NoiseOptions noiseOptions = new NoiseOptions();
+
+		@Mixin
+		private StatevectorOptions statevectorOptions = new StatevectorOptions();
 
 		@Option(names = "--input", required = true, description = "Path to the circuit file")
 		private Path input;
@@ -196,6 +205,11 @@ public final class StatecraftCli implements Callable<Integer> {
 
 		private void validateOptions() {
 			CommandLine commandLine = spec.commandLine();
+			statevectorOptions.validate(commandLine);
+			if (statevectorOptions.hasOverride() && !StatevectorEngineIdHolder.ID.equals(engineId)) {
+				throw new CommandLine.ParameterException(commandLine,
+						"--statevector-parallelism can only be used with --engine " + StatevectorEngineIdHolder.ID);
+			}
 			if (shots < 0) {
 				throw new CommandLine.ParameterException(commandLine, "--shots must be non-negative");
 			}
@@ -243,6 +257,9 @@ public final class StatecraftCli implements Callable<Integer> {
 		}
 
 		private SimulatorEngine loadEngine(String id) {
+			if (StatevectorEngineIdHolder.ID.equals(id) && statevectorOptions.hasOverride()) {
+				return new StatevectorEngine(statevectorOptions.toConfig(spec.commandLine()));
+			}
 			var loader = ServiceLoader.load(SimulatorEngine.class);
 			var engines = new ArrayList<SimulatorEngine>();
 			for (var engine : loader) {
@@ -280,11 +297,15 @@ public final class StatecraftCli implements Callable<Integer> {
 		@Mixin
 		private NoiseOptions noiseOptions = new NoiseOptions();
 
+		@Mixin
+		private StatevectorOptions statevectorOptions = new StatevectorOptions();
+
 		@Override
 		public Integer call() {
+			statevectorOptions.validate(spec.commandLine());
 			NoiseOptionsSupport.ResolvedNoiseSpec noiseSpec = noiseOptions.resolve(spec.commandLine());
 			PrintWriter out = spec.commandLine().getOut();
-			SimulatorEngine engine = loadStatevectorEngine();
+			SimulatorEngine engine = loadStatevectorEngine(statevectorOptions, spec.commandLine());
 			List<AlgorithmSpec> algorithms = AlgorithmSuiteSpecs.all();
 
 			out.println(
@@ -363,11 +384,40 @@ public final class StatecraftCli implements Callable<Integer> {
 		}
 	}
 
+	static final class StatevectorOptions {
+		@Option(names = "--statevector-parallelism", description = "Statevector ForkJoin worker count; use 1 for serial execution")
+		private Integer parallelism;
+
+		private boolean hasOverride() {
+			return parallelism != null;
+		}
+
+		private void validate(CommandLine commandLine) {
+			if (parallelism != null && parallelism < 1) {
+				throw new CommandLine.ParameterException(commandLine, "--statevector-parallelism must be at least 1");
+			}
+		}
+
+		private StatevectorExecutionConfig toConfig(CommandLine commandLine) {
+			validate(commandLine);
+			return parallelism == null
+					? StatevectorExecutionConfig.auto()
+					: StatevectorExecutionConfig.withParallelism(parallelism);
+		}
+	}
+
 	private static SimulatorEngine loadStatevectorEngine() {
 		return ServiceLoader.load(SimulatorEngine.class).stream().map(ServiceLoader.Provider::get)
 				.filter(engine -> StatevectorEngineIdHolder.ID.equals(engine.id())).findFirst()
 				.orElseThrow(() -> new IllegalStateException(
 						"No simulator engine with id '" + StatevectorEngineIdHolder.ID + "' found"));
+	}
+
+	private static SimulatorEngine loadStatevectorEngine(StatevectorOptions options, CommandLine commandLine) {
+		if (options.hasOverride()) {
+			return new StatevectorEngine(options.toConfig(commandLine));
+		}
+		return loadStatevectorEngine();
 	}
 
 	private static void printState(PrintWriter out, StateVector state, int qubitCount) {
