@@ -44,7 +44,6 @@ nav:
   - Architecture:
       - Current State: architecture/current-state.md
       - Project Overview: project-overview.md
-      - Phase 2 Implementation Guide: phase-2-implementation-guide.md
       - Statevector Layout: core/statevector-layout.md
       - Statevector Measurements: core/statevector-measurements.md
       - Tensor Network Engine: core/tensor-network-engine.md
