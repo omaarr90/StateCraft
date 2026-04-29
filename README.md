@@ -123,6 +123,30 @@ for large dense state updates. CLI commands that run the statevector backend
 accept `--statevector-parallelism <threads>`; use `1` to force serial
 execution for debugging or comparison.
 
+## Example Suite
+
+The CLI suite combines textbook circuits with realistic engine-limit workloads:
+Grover search, six-qubit QFT, a QAOA-style ring ansatz, 40-qubit line-cluster
+sampling, a tensor-network depth probe, and seeded noisy GHZ sampling.
+
+```sh
+statecraft suite --engine statevector
+statecraft suite --engine stabilizer
+statecraft suite --engine tensornetwork
+```
+
+Each example either runs on the selected engine or prints
+`Expected engine limit: ...`.
+
+| Example family | statevector | stabilizer | tensornetwork |
+| --- | --- | --- | --- |
+| Clifford/Bell/GHZ/BV basics | supported | supported | supported |
+| Non-Clifford QFT/QAOA | supported | expected limit | supported |
+| Multi-control Grover phase | supported | expected limit | expected limit |
+| 40-qubit cluster sampling | expected limit | supported | supported |
+| Depth 41 probe | supported | supported | expected limit |
+| Noisy GHZ sampling | supported | expected limit | expected limit |
+
 ## Development
 
 Common checks:
@@ -136,3 +160,8 @@ Release publishing uses the Central Portal workflow in GitHub Actions and
 requires Maven Central user-token credentials plus an in-memory GPG signing key.
 The same workflow can publish to GitHub Packages using `GITHUB_TOKEN` with
 `packages: write`.
+
+Release versions are read from `VERSION_NAME` in `gradle.properties`, or from
+the `v*` tag / manual workflow input in `.github/workflows/release.yml`. See
+[docs/releasing.md](docs/releasing.md) for Maven Central namespace, signing, and
+workflow setup.

@@ -108,7 +108,25 @@ The `statecraft` CLI exposes:
 - `run`
 - `suite`
 
-`suite` runs the built-in Bell, GHZ, Deutsch-Jozsa, Bernstein-Vazirani, QFT, and 1-bit phase-estimation examples.
+`suite` runs the built-in example catalog against a selected engine. It includes Bell, GHZ, Deutsch-Jozsa,
+Bernstein-Vazirani, QFT, phase-estimation, Grover search, a six-qubit QFT phase-gradient workload, a QAOA-style ring
+ansatz, 40-qubit line-cluster sampling, a tensor-network depth probe, and noisy GHZ sampling. Examples that are
+intentionally outside the selected engine's scope are printed as `Expected engine limit: ...`.
+
+```sh
+statecraft suite --engine statevector
+statecraft suite --engine stabilizer
+statecraft suite --engine tensornetwork
+```
+
+| Example family | statevector | stabilizer | tensornetwork |
+| --- | --- | --- | --- |
+| Clifford/Bell/GHZ/BV basics | supported | supported | supported |
+| Non-Clifford QFT/QAOA | supported | expected limit | supported |
+| Multi-control Grover phase | supported | expected limit | expected limit |
+| 40-qubit cluster sampling | expected limit | supported | supported |
+| Depth 41 probe | supported | supported | expected limit |
+| Noisy GHZ sampling | supported | expected limit | expected limit |
 
 `demo` and `run` support:
 
@@ -121,6 +139,10 @@ The `statecraft` CLI exposes:
 
 - `--input`
 - `--format qasm|json|auto`
+- `--engine`
+
+`suite` additionally supports:
+
 - `--engine`
 
 `demo`, `run`, and `suite` all share the noise mixin:

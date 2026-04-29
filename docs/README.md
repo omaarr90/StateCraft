@@ -78,7 +78,7 @@ The CLI entrypoint is `statecraft` with four subcommands:
 - `statecraft engines`: list discovered engine ids
 - `statecraft demo`: run the built-in Bell-state demo
 - `statecraft run --input <file>`: parse and simulate a JSON or QASM circuit
-- `statecraft suite`: execute the built-in Bell, GHZ, Deutsch-Jozsa, Bernstein-Vazirani, QFT, and 1-bit phase-estimation sample suite
+- `statecraft suite`: execute textbook examples plus realistic engine-limit workloads
 
 `demo` and `run` support measurement flags:
 
@@ -91,6 +91,32 @@ The CLI entrypoint is `statecraft` with four subcommands:
 
 - `--format qasm|json|auto`
 - `--engine <id>`
+
+`suite` also supports:
+
+- `--engine <id>`
+
+Useful suite commands:
+
+```sh
+statecraft suite --engine statevector
+statecraft suite --engine stabilizer
+statecraft suite --engine tensornetwork
+```
+
+The suite includes Bell, GHZ, Deutsch-Jozsa, Bernstein-Vazirani, QFT, phase-estimation, Grover search, a six-qubit QFT
+phase-gradient workload, a QAOA-style ring ansatz, 40-qubit line-cluster sampling, a tensor-network depth probe, and
+noisy GHZ sampling. For the selected engine, unsupported examples are reported as `Expected engine limit: ...` instead
+of being run.
+
+| Example family | statevector | stabilizer | tensornetwork |
+| --- | --- | --- | --- |
+| Clifford/Bell/GHZ/BV basics | supported | supported | supported |
+| Non-Clifford QFT/QAOA | supported | expected limit | supported |
+| Multi-control Grover phase | supported | expected limit | expected limit |
+| 40-qubit cluster sampling | expected limit | supported | supported |
+| Depth 41 probe | supported | supported | expected limit |
+| Noisy GHZ sampling | supported | expected limit | expected limit |
 
 `demo`, `run`, and `suite` all accept noise options:
 

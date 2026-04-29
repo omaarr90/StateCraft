@@ -15,13 +15,13 @@ import com.omaarr90.statecraft.quantum.Hadamard;
 import com.omaarr90.statecraft.quantum.QuantumCircuit;
 import com.omaarr90.statecraft.quantum.StateVector;
 import java.io.PrintWriter;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Locale;
 import java.util.List;
+import java.util.Locale;
 import java.util.ServiceLoader;
 import java.util.concurrent.Callable;
-import java.nio.file.Path;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
@@ -189,7 +189,7 @@ public final class StatecraftCli implements Callable<Integer> {
 			NoiseOptionsSupport.ResolvedNoiseSpec noiseSpec = noiseOptions.resolve(spec.commandLine());
 			CircuitFormat selectedFormat = parseFormat();
 			QuantumCircuit circuit = parseCircuit(selectedFormat);
-			SimulatorEngine engine = loadEngine(engineId);
+			SimulatorEngine engine = StatecraftCli.loadEngine(engineId, statevectorOptions, spec.commandLine());
 			SimulationResult result = engine.simulate(buildRequest(circuit, noiseSpec));
 
 			PrintWriter out = spec.commandLine().getOut();
@@ -256,25 +256,6 @@ public final class StatecraftCli implements Callable<Integer> {
 			return noiseSpec.applyTo(request);
 		}
 
-		private SimulatorEngine loadEngine(String id) {
-			if (StatevectorEngineIdHolder.ID.equals(id) && statevectorOptions.hasOverride()) {
-				return new StatevectorEngine(statevectorOptions.toConfig(spec.commandLine()));
-			}
-			var loader = ServiceLoader.load(SimulatorEngine.class);
-			var engines = new ArrayList<SimulatorEngine>();
-			for (var engine : loader) {
-				engines.add(engine);
-				if (engine.id().equals(id)) {
-					return engine;
-				}
-			}
-			engines.sort(Comparator.comparing(SimulatorEngine::id));
-			List<String> ids = engines.stream().map(SimulatorEngine::id).toList();
-			String available = ids.isEmpty() ? "(none)" : String.join(", ", ids);
-			throw new CommandLine.ParameterException(spec.commandLine(),
-					"Unknown engine '" + id + "'. Available: " + available);
-		}
-
 		private static String formatParseError(CircuitParseException e) {
 			String message = e.getMessage();
 			if (e.line().isPresent()) {
@@ -288,8 +269,10 @@ public final class StatecraftCli implements Callable<Integer> {
 		}
 	}
 
-	@Command(name = "suite", description = "Execute a hard-coded suite of sample quantum algorithms.")
+	@Command(name = "suite", description = "Execute a catalog of sample circuits and engine-limit examples.")
 	static final class Suite implements Callable<Integer> {
+
+		private static final int OPERATION_PRINT_LIMIT = 48;
 
 		@Spec
 		private CommandSpec spec;
@@ -300,40 +283,69 @@ public final class StatecraftCli implements Callable<Integer> {
 		@Mixin
 		private StatevectorOptions statevectorOptions = new StatevectorOptions();
 
+		@Option(names = "--engine", description = "Simulator engine id", defaultValue = StatevectorEngineIdHolder.ID)
+		private String engineId;
+
 		@Override
 		public Integer call() {
-			statevectorOptions.validate(spec.commandLine());
+			validateOptions();
 			NoiseOptionsSupport.ResolvedNoiseSpec noiseSpec = noiseOptions.resolve(spec.commandLine());
 			PrintWriter out = spec.commandLine().getOut();
-			SimulatorEngine engine = loadStatevectorEngine(statevectorOptions, spec.commandLine());
-			List<AlgorithmSpec> algorithms = AlgorithmSuiteSpecs.all();
+			SimulatorEngine engine = loadEngine(engineId, statevectorOptions, spec.commandLine());
+			List<ExampleSpec> examples = AlgorithmSuiteSpecs.all();
 
-			out.println(
-					VERSION + " - executing " + algorithms.size() + " algorithms using engine '" + engine.id() + "'");
-			for (AlgorithmSpec algorithm : algorithms) {
-				runAlgorithm(out, engine, algorithm, noiseSpec);
+			out.println(VERSION + " - executing " + examples.size() + " examples using engine '" + engine.id() + "'");
+			for (ExampleSpec example : examples) {
+				runExample(out, engine, example, noiseSpec);
 			}
 			out.flush();
 			return CommandLine.ExitCode.OK;
 		}
 
-		private void runAlgorithm(PrintWriter out, SimulatorEngine engine, AlgorithmSpec algorithm,
+		private void validateOptions() {
+			CommandLine commandLine = spec.commandLine();
+			statevectorOptions.validate(commandLine);
+			if (statevectorOptions.hasOverride() && !StatevectorEngineIdHolder.ID.equals(engineId)) {
+				throw new CommandLine.ParameterException(commandLine,
+						"--statevector-parallelism can only be used with --engine " + StatevectorEngineIdHolder.ID);
+			}
+		}
+
+		private void runExample(PrintWriter out, SimulatorEngine engine, ExampleSpec example,
 				NoiseOptionsSupport.ResolvedNoiseSpec noiseSpec) {
 			out.println();
-			out.println("=== " + algorithm.name() + " ===");
-			out.println("Description : " + algorithm.description());
-			out.println("Expected    : " + algorithm.expectedOutcome());
-			out.println("Qubits      : " + algorithm.circuit().qubitCount());
-			out.println("Depth       : " + algorithm.circuit().operations().size());
-			out.println("Operations  :");
-			printOperations(out, algorithm.circuit());
+			out.println("=== " + example.name() + " ===");
+			out.println("Category    : " + example.category());
+			out.println("Description : " + example.description());
+			out.println("Expected    : " + example.expectedOutcome());
+			out.println("Qubits      : " + example.circuit().qubitCount());
+			out.println("Est. depth  : " + estimateDepth(example.circuit()));
+			out.println("Operations  : " + example.circuit().operations().size());
+			out.println("Circuit     :");
+			printOperations(out, example.circuit());
 
-			SimulationResult result = engine.simulate(noiseSpec.applyTo(algorithm.request()));
+			EngineExpectation expectation = resolveExpectation(example, engine.id(), noiseSpec);
+			if (!expectation.supported()) {
+				out.println("Expected engine limit: " + expectation.reason());
+				return;
+			}
+
+			SimulationResult result = engine.simulate(noiseSpec.applyTo(example.request()));
 			result.finalState().ifPresent(state -> {
 				out.println("Final state amplitudes (non-zero shown):");
-				printState(out, state, algorithm.circuit().qubitCount());
+				printState(out, state, example.circuit().qubitCount());
 			});
 			result.measurement().ifPresent(measurement -> printMeasurement(out, measurement));
+		}
+
+		private static EngineExpectation resolveExpectation(ExampleSpec example, String engineId,
+				NoiseOptionsSupport.ResolvedNoiseSpec noiseSpec) {
+			EngineExpectation expectation = example.expectationFor(engineId);
+			if (noiseSpec.hasNoiseChannels() && !StatevectorEngineIdHolder.ID.equals(engineId)
+					&& expectation.supported()) {
+				return EngineExpectation.unsupported(engineId + " engine does not support noisy suite runs yet");
+			}
+			return expectation;
 		}
 
 		private static void printOperations(PrintWriter out, QuantumCircuit circuit) {
@@ -342,8 +354,12 @@ public final class StatecraftCli implements Callable<Integer> {
 				out.println("  (no operations)");
 				return;
 			}
-			for (int index = 0; index < operations.size(); index++) {
+			int limit = Math.min(operations.size(), OPERATION_PRINT_LIMIT);
+			for (int index = 0; index < limit; index++) {
 				out.println("  " + (index + 1) + ". " + describeOperation(operations.get(index)));
+			}
+			if (operations.size() > limit) {
+				out.println("  ... (" + (operations.size() - limit) + " more operations)");
 			}
 		}
 	}
@@ -418,6 +434,25 @@ public final class StatecraftCli implements Callable<Integer> {
 			return new StatevectorEngine(options.toConfig(commandLine));
 		}
 		return loadStatevectorEngine();
+	}
+
+	private static SimulatorEngine loadEngine(String id, StatevectorOptions statevectorOptions,
+			CommandLine commandLine) {
+		if (StatevectorEngineIdHolder.ID.equals(id) && statevectorOptions.hasOverride()) {
+			return new StatevectorEngine(statevectorOptions.toConfig(commandLine));
+		}
+		var loader = ServiceLoader.load(SimulatorEngine.class);
+		var engines = new ArrayList<SimulatorEngine>();
+		for (var engine : loader) {
+			engines.add(engine);
+			if (engine.id().equals(id)) {
+				return engine;
+			}
+		}
+		engines.sort(Comparator.comparing(SimulatorEngine::id));
+		List<String> ids = engines.stream().map(SimulatorEngine::id).toList();
+		String available = ids.isEmpty() ? "(none)" : String.join(", ", ids);
+		throw new CommandLine.ParameterException(commandLine, "Unknown engine '" + id + "'. Available: " + available);
 	}
 
 	private static void printState(PrintWriter out, StateVector state, int qubitCount) {
@@ -554,9 +589,55 @@ public final class StatecraftCli implements Callable<Integer> {
 		return Math.abs(real) < eps && Math.abs(imag) < eps;
 	}
 
+	private static int estimateDepth(QuantumCircuit circuit) {
+		int[] layers = new int[circuit.qubitCount()];
+		int maxDepth = 0;
+		for (QuantumCircuit.Operation operation : circuit.operations()) {
+			int[] touched = touchedQubits(operation);
+			int startLayer = 1;
+			for (int qubit : touched) {
+				startLayer = Math.max(startLayer, layers[qubit] + 1);
+			}
+			for (int qubit : touched) {
+				layers[qubit] = startLayer;
+			}
+			maxDepth = Math.max(maxDepth, startLayer);
+		}
+		return maxDepth;
+	}
+
+	private static int[] touchedQubits(QuantumCircuit.Operation operation) {
+		if (operation instanceof QuantumCircuit.Operation.SingleGateOperation single) {
+			return new int[]{single.qubit()};
+		}
+		if (operation instanceof QuantumCircuit.Operation.CnotOperation cnot) {
+			return new int[]{cnot.controlQubit(), cnot.targetQubit()};
+		}
+		if (operation instanceof QuantumCircuit.Operation.TwoQubitGateOperation twoQubit) {
+			return new int[]{twoQubit.firstQubit(), twoQubit.secondQubit()};
+		}
+		if (operation instanceof QuantumCircuit.Operation.TwoQubitDiagonalOperation diagonal) {
+			return new int[]{diagonal.firstQubit(), diagonal.secondQubit()};
+		}
+		if (operation instanceof QuantumCircuit.Operation.SwapOperation swap) {
+			return new int[]{swap.firstQubit(), swap.secondQubit()};
+		}
+		if (operation instanceof QuantumCircuit.Operation.MultiControlOperation multi) {
+			int[] controls = multi.controlQubits();
+			int[] touched = new int[controls.length + 1];
+			System.arraycopy(controls, 0, touched, 0, controls.length);
+			touched[controls.length] = multi.targetQubit();
+			return touched;
+		}
+		if (operation instanceof QuantumCircuit.Operation.MeasureOperation measure) {
+			return measure.qubits();
+		}
+		return new int[0];
+	}
+
 	private static String describeOperation(QuantumCircuit.Operation operation) {
 		if (operation instanceof QuantumCircuit.Operation.SingleGateOperation single) {
-			return single.gate().getClass().getSimpleName() + "(q" + single.qubit() + ")";
+			return single.gate().name() + "(q" + single.qubit() + ")";
 		}
 		if (operation instanceof QuantumCircuit.Operation.CnotOperation cnot) {
 			return "CNOT(control=q" + cnot.controlQubit() + ", target=q" + cnot.targetQubit() + ")";
@@ -571,8 +652,8 @@ public final class StatecraftCli implements Callable<Integer> {
 			return "SWAP(q" + swap.firstQubit() + ", q" + swap.secondQubit() + ")";
 		}
 		if (operation instanceof QuantumCircuit.Operation.MultiControlOperation multi) {
-			return multi.gate().getClass().getSimpleName() + "(controls=" + formatQubitList(multi.controlQubits())
-					+ ", target=q" + multi.targetQubit() + ")";
+			return multi.gate().name() + "(controls=" + formatQubitList(multi.controlQubits()) + ", target=q"
+					+ multi.targetQubit() + ")";
 		}
 		if (operation instanceof QuantumCircuit.Operation.MeasureOperation measure) {
 			return "MEASURE " + formatQubitList(measure.qubits());

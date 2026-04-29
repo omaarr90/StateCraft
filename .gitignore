@@ -5,6 +5,7 @@ build/
 **/build/
 **/bin/
 out/
+site/
 target/
 .idea/
 .vscode/
@@ -23,4 +24,5 @@ local.properties
 !.env.example
 docs/deliverables/*
 !docs/deliverables/benchmark-validation-report-template.md
+docs/api/
 docs/temp/

@@ -2,6 +2,10 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
+      version:
+        description: "Maven artifact version"
+        required: true
+        default: "0.1.0"
       target:
         description: "Release target"
         required: true
@@ -22,6 +26,10 @@ permissions:
   contents: read
   packages: write
 
+concurrency:
+  group: release-${{ github.ref_name }}-${{ inputs.version || '' }}
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -30,8 +38,36 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 25, cache: gradle }
       - uses: gradle/gradle-build-action@v3
+      - name: Resolve release version
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" && "${GITHUB_REF_NAME:-}" == v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="${INPUT_VERSION}"
+          fi
+
+          if [[ -z "$version" ]]; then
+            echo "Release version is required" >&2
+            exit 1
+          fi
+
+          if [[ "$version" == *SNAPSHOT* ]]; then
+            echo "Maven Central release versions must not be SNAPSHOT versions" >&2
+            exit 1
+          fi
+
+          if [[ ! "$version" =~ ^[0-9]+(\.[0-9]+){1,2}(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+            echo "Release version '$version' does not look like a Maven release version" >&2
+            exit 1
+          fi
+
+          echo "ORG_GRADLE_PROJECT_VERSION_NAME=$version" >> "$GITHUB_ENV"
+          echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"
       - run: ./gradlew spotlessCheck test :core:javadoc :engines:javadoc publishToMavenLocal --stacktrace
-      - run: ./gradlew -p scripts/consumer-smoke test --stacktrace
+      - run: ./gradlew -p scripts/consumer-smoke -Pstatecraft.version="$RELEASE_VERSION" test --stacktrace
       - if: ${{ github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'central' }}
         run: ./gradlew publishAndReleaseToMavenCentral --stacktrace
         env:
@@ -46,7 +82,7 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - if: ${{ github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'github' }}
-        run: ./gradlew -p scripts/consumer-smoke test -Pstatecraft.githubPackages=true --refresh-dependencies --stacktrace
+        run: ./gradlew -p scripts/consumer-smoke -Pstatecraft.version="$RELEASE_VERSION" test -Pstatecraft.githubPackages=true --refresh-dependencies --stacktrace
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

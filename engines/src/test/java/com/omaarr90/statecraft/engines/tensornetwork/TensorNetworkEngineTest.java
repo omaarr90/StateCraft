@@ -149,6 +149,20 @@ class TensorNetworkEngineTest {
 	}
 
 	@Test
+	void largeLineClusterSamplingRunsInShotsOnlyMode() {
+		QuantumCircuit circuit = lineClusterCircuit(40);
+		SimulationRequest request = SimulationRequest.zeroState(circuit)
+				.withMeasurement(MeasurementInstruction.counts(16, 0, 1, 2, 3, 4, 5, 6, 7).withSeed(123L), false);
+
+		SimulationResult result = new TensorNetworkEngine().simulate(request);
+		MeasurementResult.Histogram histogram = (MeasurementResult.Histogram) result.measurement().orElseThrow();
+
+		assertTrue(result.finalState().isEmpty());
+		assertEquals(16, histogram.shots());
+		assertEquals(16, histogram.counts().values().stream().mapToInt(Integer::intValue).sum());
+	}
+
+	@Test
 	void rejectsLargeFinalStateMaterialization() {
 		QuantumCircuit circuit = new QuantumCircuit(TensorNetworkEngine.MAX_FINAL_STATE_QUBITS + 1);
 		UnsupportedOperationException exception = assertThrows(UnsupportedOperationException.class,
@@ -178,6 +192,17 @@ class TensorNetworkEngineTest {
 			circuit = random.nextBoolean()
 					? circuit.append(new Hadamard(), qubit)
 					: circuit.append(new PauliX(), qubit);
+		}
+		return circuit;
+	}
+
+	private static QuantumCircuit lineClusterCircuit(int qubits) {
+		QuantumCircuit circuit = new QuantumCircuit(qubits);
+		for (int qubit = 0; qubit < qubits; qubit++) {
+			circuit = circuit.append(new Hadamard(), qubit);
+		}
+		for (int qubit = 0; qubit < qubits - 1; qubit++) {
+			circuit = circuit.appendControlledPhase(Math.PI, qubit, qubit + 1);
 		}
 		return circuit;
 	}

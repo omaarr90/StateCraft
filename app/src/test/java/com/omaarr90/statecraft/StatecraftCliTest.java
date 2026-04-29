@@ -237,7 +237,7 @@ class StatecraftCliTest {
 	}
 
 	@Test
-	void suitePrintsExpandedAlgorithmSet() {
+	void suitePrintsExpandedExampleCatalog() {
 		StringWriter out = new StringWriter();
 		CommandLine cli = new CommandLine(new StatecraftCli());
 		cli.setOut(new PrintWriter(out, true));
@@ -247,7 +247,7 @@ class StatecraftCliTest {
 		assertEquals(CommandLine.ExitCode.OK, exitCode);
 
 		String output = out.toString();
-		assertTrue(output.contains("executing 7 algorithms"));
+		assertTrue(output.contains("executing 13 examples"));
 		assertTrue(output.contains("=== Bell Pair ==="));
 		assertTrue(output.contains("=== GHZ State ==="));
 		assertTrue(output.contains("=== Deutsch-Jozsa (Constant) ==="));
@@ -255,6 +255,13 @@ class StatecraftCliTest {
 		assertTrue(output.contains("=== Bernstein-Vazirani ==="));
 		assertTrue(output.contains("=== Quantum Fourier Transform (3-qubit) ==="));
 		assertTrue(output.contains("=== Quantum Phase Estimation (1-bit) ==="));
+		assertTrue(output.contains("=== Grover Search (3-qubit marked state) ==="));
+		assertTrue(output.contains("=== QFT Phase Gradient (6-qubit) ==="));
+		assertTrue(output.contains("=== QAOA Ring Ansatz (6-qubit) ==="));
+		assertTrue(output.contains("=== Line Cluster Sampling (40-qubit) ==="));
+		assertTrue(output.contains("=== Depth Limit Probe (41 layers) ==="));
+		assertTrue(output.contains("=== Noisy GHZ Sampling ==="));
+		assertTrue(output.contains("Expected engine limit: 40 qubits exceeds the statevector dense limit of 29"));
 		assertTrue(output.contains("Expected    : Shot histogram is exactly 000 on q2 q1 q0."));
 		assertTrue(output.contains("Expected    : Shot histogram is exactly 001 on q2 q1 q0."));
 		assertTrue(output.contains("Expected    : Shot histogram is exactly 1011 on q3 q2 q1 q0."));
@@ -263,6 +270,38 @@ class StatecraftCliTest {
 		assertTrue(output.contains("  001 : 4096"));
 		assertTrue(output.contains("  1011 : 4096"));
 		assertTrue(output.contains("  1 : 4096"));
+	}
+
+	@Test
+	void suiteRunsAgainstSelectedEngineAndPrintsExpectedLimits() {
+		StringWriter out = new StringWriter();
+		CommandLine cli = new CommandLine(new StatecraftCli());
+		cli.setOut(new PrintWriter(out, true));
+		cli.setErr(new PrintWriter(new StringWriter(), true));
+
+		int exitCode = cli.execute("suite", "--engine", "stabilizer");
+		assertEquals(CommandLine.ExitCode.OK, exitCode);
+
+		String output = out.toString();
+		assertTrue(output.contains("executing 13 examples using engine 'stabilizer'"));
+		assertTrue(output.contains("=== Grover Search (3-qubit marked state) ==="));
+		assertTrue(output.contains("Expected engine limit: multi-control phase uses two controls"));
+		assertTrue(output.contains("=== QFT Phase Gradient (6-qubit) ==="));
+		assertTrue(output.contains("Expected engine limit: non-Clifford controlled-phase rotations"));
+		assertTrue(output.contains("=== Line Cluster Sampling (40-qubit) ==="));
+		assertTrue(output.contains("Shot histogram"));
+	}
+
+	@Test
+	void suiteRejectsStatevectorParallelismForOtherEngines() {
+		StringWriter err = new StringWriter();
+		CommandLine cli = new CommandLine(new StatecraftCli());
+		cli.setOut(new PrintWriter(new StringWriter(), true));
+		cli.setErr(new PrintWriter(err, true));
+
+		int exitCode = cli.execute("suite", "--engine", "stabilizer", "--statevector-parallelism", "2");
+		assertEquals(CommandLine.ExitCode.USAGE, exitCode);
+		assertTrue(err.toString().contains("--statevector-parallelism can only be used with --engine statevector"));
 	}
 
 	@Test
@@ -276,7 +315,7 @@ class StatecraftCliTest {
 		assertEquals(CommandLine.ExitCode.OK, exitCode);
 
 		String output = out.toString();
-		assertTrue(output.contains("executing 7 algorithms"));
+		assertTrue(output.contains("executing 13 examples"));
 		assertTrue(output.contains("=== Bell Pair ==="));
 	}
 }

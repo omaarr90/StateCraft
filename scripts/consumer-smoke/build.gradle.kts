@@ -1,5 +1,6 @@
 import org.gradle.api.tasks.compile.JavaCompile
 import org.gradle.api.tasks.testing.Test
+import java.util.Properties
 
 plugins {
     java
@@ -8,12 +9,29 @@ plugins {
 group = "com.omaarr90.statecraft.smoke"
 version = "0.1.0"
 
+val statecraftRootProperties =
+    Properties().apply {
+        val file = rootProject.projectDir.resolve("../../gradle.properties").normalize()
+        if (file.isFile) {
+            file.inputStream().use(::load)
+        }
+    }
 val useGitHubPackages =
     providers
         .gradleProperty("statecraft.githubPackages")
         .orElse(providers.environmentVariable("STATECRAFT_GITHUB_PACKAGES"))
         .map { it.toBoolean() }
         .getOrElse(false)
+val statecraftGroup =
+    providers
+        .gradleProperty("statecraft.group")
+        .orElse(providers.environmentVariable("STATECRAFT_GROUP"))
+        .orElse(statecraftRootProperties.getProperty("GROUP", "com.omaarr90.statecraft"))
+val statecraftVersion =
+    providers
+        .gradleProperty("statecraft.version")
+        .orElse(providers.environmentVariable("STATECRAFT_VERSION"))
+        .orElse(statecraftRootProperties.getProperty("VERSION_NAME", "0.1.0"))
 
 repositories {
     if (useGitHubPackages) {
@@ -40,7 +58,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.omaarr90.statecraft:statecraft-engines:0.1.0")
+    implementation("${statecraftGroup.get()}:statecraft-engines:${statecraftVersion.get()}")
 
     testImplementation(platform("org.junit:junit-bom:5.12.1"))
     testImplementation("org.junit.jupiter:junit-jupiter")

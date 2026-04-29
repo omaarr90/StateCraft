@@ -4,6 +4,9 @@ plugins {
 
 apply(from = "gradle/benchmark-validation.gradle.kts")
 
+val statecraftGroup = providers.gradleProperty("GROUP").orElse("com.omaarr90.statecraft")
+val statecraftVersion = providers.gradleProperty("VERSION_NAME").orElse("0.1.0")
+
 spotless {
     java {
         target("**/src/*/java/**/*.java")
@@ -28,8 +31,8 @@ allprojects {
 }
 
 subprojects {
-    group = "com.omaarr90.statecraft"
-    version = "0.1.0"
+    group = statecraftGroup.get()
+    version = statecraftVersion.get()
 
     plugins.withType<JavaPlugin> {
         the<JavaPluginExtension>().toolchain.languageVersion.set(JavaLanguageVersion.of(25))

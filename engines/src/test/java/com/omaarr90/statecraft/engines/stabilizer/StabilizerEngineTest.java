@@ -16,6 +16,7 @@ import com.omaarr90.statecraft.core.noise.NoiseModel;
 import com.omaarr90.statecraft.engines.statevector.StatevectorEngine;
 import com.omaarr90.statecraft.quantum.CnotGate;
 import com.omaarr90.statecraft.quantum.Hadamard;
+import com.omaarr90.statecraft.quantum.MatrixSingleQubitGate;
 import com.omaarr90.statecraft.quantum.PauliX;
 import com.omaarr90.statecraft.quantum.PauliY;
 import com.omaarr90.statecraft.quantum.PauliZ;
@@ -114,12 +115,40 @@ class StabilizerEngineTest {
 	}
 
 	@Test
+	void largeLineClusterSamplingRunsInShotsOnlyMode() {
+		QuantumCircuit circuit = lineClusterCircuit(40);
+		SimulationRequest request = SimulationRequest.zeroState(circuit)
+				.withMeasurement(MeasurementInstruction.counts(16, 0, 1, 2, 3, 4, 5, 6, 7).withSeed(123L), false);
+
+		MeasurementResult.Histogram histogram = (MeasurementResult.Histogram) new StabilizerEngine().simulate(request)
+				.measurement().orElseThrow();
+
+		assertEquals(16, histogram.shots());
+		assertEquals(16, histogram.counts().values().stream().mapToInt(Integer::intValue).sum());
+	}
+
+	@Test
 	void rejectsGenericControlledPhaseGate() {
 		QuantumCircuit circuit = new QuantumCircuit(2).append(new Hadamard(), 0).appendControlledPhase(Math.PI / 2.0, 0,
 				1);
 		SimulationRequest request = SimulationRequest.zeroState(circuit);
 
 		assertThrows(UnsupportedOperationException.class, () -> new StabilizerEngine().simulate(request));
+	}
+
+	@Test
+	void rejectsNonCliffordSingleQubitRotation() {
+		double angle = Math.PI / 4.0;
+		double cos = Math.cos(angle / 2.0);
+		double sin = Math.sin(angle / 2.0);
+		MatrixSingleQubitGate rx = new MatrixSingleQubitGate("Rx(pi/4)", new ComplexNumber(cos, 0.0),
+				new ComplexNumber(0.0, -sin), new ComplexNumber(0.0, -sin), new ComplexNumber(cos, 0.0));
+		QuantumCircuit circuit = new QuantumCircuit(1).append(rx, 0);
+		SimulationRequest request = SimulationRequest.zeroState(circuit);
+
+		UnsupportedOperationException exception = assertThrows(UnsupportedOperationException.class,
+				() -> new StabilizerEngine().simulate(request));
+		assertTrue(exception.getMessage().contains("Clifford"));
 	}
 
 	@Test
@@ -195,5 +224,16 @@ class StabilizerEngineTest {
 			assertEquals(expected.real(index), actual.real(index), EPS, "real mismatch at " + index);
 			assertEquals(expected.imag(index), actual.imag(index), EPS, "imag mismatch at " + index);
 		}
+	}
+
+	private static QuantumCircuit lineClusterCircuit(int qubits) {
+		QuantumCircuit circuit = new QuantumCircuit(qubits);
+		for (int qubit = 0; qubit < qubits; qubit++) {
+			circuit = circuit.append(new Hadamard(), qubit);
+		}
+		for (int qubit = 0; qubit < qubits - 1; qubit++) {
+			circuit = circuit.appendControlledPhase(Math.PI, qubit, qubit + 1);
+		}
+		return circuit;
 	}
 }
