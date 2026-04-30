@@ -1,7 +1,7 @@
 # Getting Started
 
-StateCraft is published as Maven artifacts for Java projects. The current
-release version in this repository is `1.0.0`.
+StateCraft is published to Maven Central as Maven artifacts for Java projects.
+The current release version in this repository is `1.0.0`.
 
 ## Requirements
 
@@ -17,6 +17,10 @@ Use `statecraft-engines` when you want the built-in backends. It brings in
 `statecraft-core` transitively.
 
 ```kotlin
+repositories {
+    mavenCentral()
+}
+
 dependencies {
     implementation("com.omaarr90.statecraft:statecraft-engines:1.0.0")
 }
@@ -52,6 +56,18 @@ dependencies {
 
 ## Maven
 
+Maven Central is enabled by default for standard Maven projects. If your build
+declares repositories explicitly, keep Maven Central available:
+
+```xml
+<repositories>
+  <repository>
+    <id>central</id>
+    <url>https://repo.maven.apache.org/maven2</url>
+  </repository>
+</repositories>
+```
+
 ```xml
 <dependency>
   <groupId>com.omaarr90.statecraft</groupId>
@@ -71,26 +87,6 @@ plugins:
 </compilerArgs>
 <argLine>--enable-preview --add-modules jdk.incubator.vector</argLine>
 ```
-
-## GitHub Packages
-
-StateCraft can also be published to GitHub Packages. GitHub Packages requires
-credentials even for reads.
-
-```kotlin
-repositories {
-    maven {
-        url = uri("https://maven.pkg.github.com/omaarr90/StateCraft")
-        credentials {
-            username = findProperty("gpr.user") as String? ?: System.getenv("GITHUB_ACTOR")
-            password = findProperty("gpr.key") as String? ?: System.getenv("GITHUB_TOKEN")
-        }
-    }
-}
-```
-
-Use a token with `read:packages` locally, or a `GITHUB_TOKEN` with package read
-access in GitHub Actions.
 
 ## First Simulation
 

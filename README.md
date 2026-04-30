@@ -5,16 +5,22 @@ parsers, noise models, and multiple simulator engines.
 
 ## Packages
 
-StateCraft publishes two Maven artifacts:
+StateCraft publishes two Maven artifacts to Maven Central. Gradle consumers
+should resolve them with `mavenCentral()`:
 
 ```kotlin
+repositories {
+    mavenCentral()
+}
+
 dependencies {
     implementation("com.omaarr90.statecraft:statecraft-core:1.0.0")
     implementation("com.omaarr90.statecraft:statecraft-engines:1.0.0")
 }
 ```
 
-Maven users can import the same coordinates:
+Maven users can import the same coordinates from Maven Central at
+`https://repo.maven.apache.org/maven2`:
 
 ```xml
 <dependency>
@@ -38,35 +44,6 @@ test/runtime launchers:
 
 `statecraft-engines` depends on `statecraft-core`, so application projects only
 need the engines artifact when they want the default simulator backends.
-
-## GitHub Packages
-
-StateCraft can also publish the same Maven coordinates to GitHub Packages at:
-
-```kotlin
-repositories {
-    maven {
-        url = uri("https://maven.pkg.github.com/omaarr90/StateCraft")
-        credentials {
-            username = findProperty("gpr.user") as String? ?: System.getenv("GITHUB_ACTOR")
-            password = findProperty("gpr.key") as String? ?: System.getenv("GITHUB_TOKEN")
-        }
-    }
-}
-```
-
-Maven consumers can add the same repository:
-
-```xml
-<repository>
-  <id>github</id>
-  <url>https://maven.pkg.github.com/omaarr90/StateCraft</url>
-</repository>
-```
-
-GitHub Packages requires credentials to read packages. For local use, provide a
-classic token with `read:packages`; GitHub Actions consumers can use a
-`GITHUB_TOKEN` that has package read access.
 
 ## Java Runtime
 
@@ -158,8 +135,6 @@ Common checks:
 
 Release publishing uses the Central Portal workflow in GitHub Actions and
 requires Maven Central user-token credentials plus an in-memory GPG signing key.
-The same workflow can publish to GitHub Packages using `GITHUB_TOKEN` with
-`packages: write`.
 
 Release versions are read from `VERSION_NAME` in `gradle.properties`, or from
 the `v*` tag / manual workflow input in `.github/workflows/release.yml`. See
