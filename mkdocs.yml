@@ -40,7 +40,10 @@ nav:
   - Getting Started: getting-started.md
   - Core Module: core.md
   - Engine Module: engines.md
-  - API Reference: api.md
+  - API Reference:
+      - Overview: api.md
+      - Core Javadocs: api/core/index.html
+      - Engines Javadocs: api/engines/index.html
   - Architecture:
       - Current State: architecture/current-state.md
       - Project Overview: project-overview.md

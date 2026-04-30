@@ -2,8 +2,8 @@
 
 The API reference is generated from Javadocs during the GitHub Pages build.
 
-- [Core Javadocs](api/core/)
-- [Engines Javadocs](api/engines/)
+- [Core Javadocs](core/)
+- [Engines Javadocs](engines/)
 
 Build the same reference locally with:
 
