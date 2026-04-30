@@ -3,9 +3,12 @@ plugins {
     alias(libs.plugins.vanniktech.maven.publish)
 }
 
+val useGpgCmdForSigning =
+    providers.gradleProperty("signing.useGpgCmd").map(String::toBoolean).orElse(false)
 val hasSigningCredentials =
     providers.gradleProperty("signingInMemoryKey").isPresent ||
-        providers.gradleProperty("signing.secretKeyRingFile").isPresent
+        providers.gradleProperty("signing.secretKeyRingFile").isPresent ||
+        useGpgCmdForSigning.get()
 
 dependencies {
     implementation(libs.jackson.databind)
@@ -48,6 +51,14 @@ mavenPublishing {
             url.set("https://github.com/omaarr90/StateCraft")
             connection.set("scm:git:https://github.com/omaarr90/StateCraft.git")
             developerConnection.set("scm:git:ssh://git@github.com/omaarr90/StateCraft.git")
+        }
+    }
+}
+
+plugins.withId("signing") {
+    configure<org.gradle.plugins.signing.SigningExtension> {
+        if (useGpgCmdForSigning.get()) {
+            useGpgCmd()
         }
     }
 }

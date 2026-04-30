@@ -52,8 +52,8 @@ Run the same checks used by release CI before cutting a tag:
 To test a future version locally without editing files:
 
 ```sh
-./gradlew -PVERSION_NAME=0.1.1 publishToMavenLocal
-./gradlew -p scripts/consumer-smoke -Pstatecraft.version=0.1.1 test
+./gradlew -PVERSION_NAME=1.0.1 publishToMavenLocal
+./gradlew -p scripts/consumer-smoke -Pstatecraft.version=1.0.1 test
 ```
 
 ## Publishing from GitHub Actions
@@ -61,11 +61,11 @@ To test a future version locally without editing files:
 Recommended path:
 
 ```sh
-git tag v0.1.0
-git push origin v0.1.0
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
-The release workflow strips the leading `v` and publishes `VERSION_NAME=0.1.0`.
+The release workflow strips the leading `v` and publishes `VERSION_NAME=1.0.0`.
 You can also run the workflow manually and provide the version input.
 
 Maven Central versions are immutable. If a release fails after Central accepts a
@@ -82,7 +82,7 @@ ORG_GRADLE_PROJECT_mavenCentralPassword=<central-token-password> \
 ORG_GRADLE_PROJECT_signingInMemoryKey="$(gpg --export-secret-keys --armor <KEY_ID>)" \
 ORG_GRADLE_PROJECT_signingInMemoryKeyId=<KEY_ID> \
 ORG_GRADLE_PROJECT_signingInMemoryKeyPassword=<key-password> \
-./gradlew -PVERSION_NAME=0.1.0 publishAndReleaseToMavenCentral --stacktrace
+./gradlew -PVERSION_NAME=1.0.0 publishAndReleaseToMavenCentral --stacktrace
 ```
 
 References:

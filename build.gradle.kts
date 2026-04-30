@@ -5,7 +5,7 @@ plugins {
 apply(from = "gradle/benchmark-validation.gradle.kts")
 
 val statecraftGroup = providers.gradleProperty("GROUP").orElse("com.omaarr90.statecraft")
-val statecraftVersion = providers.gradleProperty("VERSION_NAME").orElse("0.1.0")
+val statecraftVersion = providers.gradleProperty("VERSION_NAME").orElse("1.0.0")
 
 spotless {
     java {

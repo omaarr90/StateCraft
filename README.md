@@ -9,8 +9,8 @@ StateCraft publishes two Maven artifacts:
 
 ```kotlin
 dependencies {
-    implementation("com.omaarr90.statecraft:statecraft-core:0.1.0")
-    implementation("com.omaarr90.statecraft:statecraft-engines:0.1.0")
+    implementation("com.omaarr90.statecraft:statecraft-core:1.0.0")
+    implementation("com.omaarr90.statecraft:statecraft-engines:1.0.0")
 }
 ```
 
@@ -20,7 +20,7 @@ Maven users can import the same coordinates:
 <dependency>
   <groupId>com.omaarr90.statecraft</groupId>
   <artifactId>statecraft-engines</artifactId>
-  <version>0.1.0</version>
+  <version>1.0.0</version>
 </dependency>
 ```
 

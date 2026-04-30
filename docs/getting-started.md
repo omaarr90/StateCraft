@@ -1,7 +1,7 @@
 # Getting Started
 
 StateCraft is published as Maven artifacts for Java projects. The current
-release version in this repository is `0.1.0`.
+release version in this repository is `1.0.0`.
 
 ## Requirements
 
@@ -18,7 +18,7 @@ Use `statecraft-engines` when you want the built-in backends. It brings in
 
 ```kotlin
 dependencies {
-    implementation("com.omaarr90.statecraft:statecraft-engines:0.1.0")
+    implementation("com.omaarr90.statecraft:statecraft-engines:1.0.0")
 }
 ```
 
@@ -46,7 +46,7 @@ directly:
 
 ```kotlin
 dependencies {
-    implementation("com.omaarr90.statecraft:statecraft-core:0.1.0")
+    implementation("com.omaarr90.statecraft:statecraft-core:1.0.0")
 }
 ```
 
@@ -56,7 +56,7 @@ dependencies {
 <dependency>
   <groupId>com.omaarr90.statecraft</groupId>
   <artifactId>statecraft-engines</artifactId>
-  <version>0.1.0</version>
+  <version>1.0.0</version>
 </dependency>
 ```
 

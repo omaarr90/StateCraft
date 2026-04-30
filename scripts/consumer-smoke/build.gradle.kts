@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.omaarr90.statecraft.smoke"
-version = "0.1.0"
+version = "1.0.0"
 
 val statecraftRootProperties =
     Properties().apply {
@@ -31,7 +31,7 @@ val statecraftVersion =
     providers
         .gradleProperty("statecraft.version")
         .orElse(providers.environmentVariable("STATECRAFT_VERSION"))
-        .orElse(statecraftRootProperties.getProperty("VERSION_NAME", "0.1.0"))
+        .orElse(statecraftRootProperties.getProperty("VERSION_NAME", "1.0.0"))
 
 repositories {
     if (useGitHubPackages) {
