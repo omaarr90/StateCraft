@@ -55,6 +55,17 @@ class TensorNetworkEngineTest {
 	}
 
 	@Test
+	void denseBasisInitialStateWithQftMatchesStatevector() {
+		QuantumCircuit circuit = qftCircuit(3);
+		SimulationRequest request = SimulationRequest.withInitialState(circuit, basisState(3, 0b101));
+
+		SimulationResult tensorResult = new TensorNetworkEngine().simulate(request);
+		SimulationResult statevectorResult = new StatevectorEngine().simulate(request);
+
+		assertStateEquals(statevectorResult.finalState().orElseThrow(), tensorResult.finalState().orElseThrow());
+	}
+
+	@Test
 	void measurementSamplingWorks() {
 		QuantumCircuit circuit = new QuantumCircuit(2).append(new Hadamard(), 0).append(CnotGate.of(), 0, 1);
 		SimulationRequest request = SimulationRequest.zeroState(circuit)
@@ -194,6 +205,27 @@ class TensorNetworkEngineTest {
 					: circuit.append(new PauliX(), qubit);
 		}
 		return circuit;
+	}
+
+	private static QuantumCircuit qftCircuit(int qubits) {
+		QuantumCircuit circuit = new QuantumCircuit(qubits);
+		for (int target = 0; target < qubits; target++) {
+			circuit = circuit.append(new Hadamard(), target);
+			for (int control = target + 1; control < qubits; control++) {
+				double angle = Math.PI / (1 << (control - target));
+				circuit = circuit.appendControlledPhase(angle, control, target);
+			}
+		}
+		for (int i = 0; i < qubits / 2; i++) {
+			circuit = circuit.appendSwap(i, qubits - i - 1);
+		}
+		return circuit;
+	}
+
+	private static StateVector basisState(int qubits, int index) {
+		double[] data = new double[(1 << qubits) << 1];
+		data[index << 1] = 1.0;
+		return StateVector.fromArray(qubits, data);
 	}
 
 	private static QuantumCircuit lineClusterCircuit(int qubits) {

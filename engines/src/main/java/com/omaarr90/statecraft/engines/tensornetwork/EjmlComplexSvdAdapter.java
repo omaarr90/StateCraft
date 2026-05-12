@@ -3,6 +3,7 @@ package com.omaarr90.statecraft.engines.tensornetwork;
 import java.util.ArrayList;
 import java.util.List;
 import org.ejml.data.DMatrixRMaj;
+import org.ejml.dense.row.SingularOps_DDRM;
 import org.ejml.dense.row.factory.DecompositionFactory_DDRM;
 import org.ejml.interfaces.decomposition.SingularValueDecomposition_F64;
 
@@ -52,6 +53,7 @@ final class EjmlComplexSvdAdapter implements ComplexSvdAdapter {
 
 		int complexModes = Math.min(rows, cols);
 		int svCount = Math.min(svd.numberOfSingularValues(), singularValues.length);
+		SingularOps_DDRM.descendingOrder(null, false, singularValues, svCount, vReal, false);
 		List<Mode> modes = recoverComplexModes(rows, cols, matrixData, singularValues, svCount, vReal, complexModes);
 		if (modes.isEmpty()) {
 			throw new IllegalStateException("failed to recover complex singular vectors from EJML realified SVD");
