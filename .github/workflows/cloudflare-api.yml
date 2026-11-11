@@ -1,0 +1,61 @@
+name: Cloudflare API
+
+on:
+  push:
+    branches:
+      - feat/quarkus-simulator-api
+    paths:
+      - .github/workflows/cloudflare-api.yml
+      - .dockerignore
+      - api/**
+      - core/**
+      - engines/**
+      - app/**
+      - deploy/cloudflare/**
+      - gradle/**
+      - gradlew
+      - gradlew.bat
+      - build.gradle.kts
+      - settings.gradle.kts
+      - gradle.properties
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: statecraft-cloudflare-api
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.repository == 'omaarr90/StateCraft' && github.ref == 'refs/heads/feat/quarkus-simulator-api'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: deploy/cloudflare
+    env:
+      CI: "true"
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: deploy/cloudflare/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Check Worker types
+        run: npm run check
+      - name: Check Worker bundle without container rollout
+        run: npm run check:bundle
+      - name: Check deployment safeguards
+        run: node deploy-ci.mjs --self-test
+      - name: Deploy API and verify Java simulator
+        run: npm run deploy:ci
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          STATECRAFT_API_TOKEN: ${{ secrets.STATECRAFT_API_TOKEN }}

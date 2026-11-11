@@ -7,10 +7,11 @@
   },
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "deploy": "wrangler deploy --keep-vars",
     "types": "wrangler types",
     "check": "wrangler types && tsc --noEmit",
-    "check:bundle": "wrangler deploy --dry-run --containers-rollout=none --outdir .wrangler/validation"
+    "check:bundle": "wrangler deploy --dry-run --containers-rollout=none --outdir .wrangler/validation",
+    "deploy:ci": "node deploy-ci.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
