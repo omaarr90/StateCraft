@@ -160,8 +160,10 @@ async function wrangler(args, phase, input) {
 }
 
 export async function cloudflare(accountId, apiToken, suffix, {
-  allowMissing = false, method = "GET", json, fetchImplementation = fetch, redactSecrets = [],
+  allowMissing = false, method = "GET", json, fetchImplementation = fetch, redactSecrets = [], enveloped = true,
 } = {}) {
+  ensure(enveloped || (suffix === "/containers/me" && method === "GET"),
+    "Bare Cloudflare responses are accepted only for the Containers access preflight.");
   const endpoint = `${method} /accounts/<account-id>${suffix}`;
   let response;
   try {
@@ -177,22 +179,30 @@ export async function cloudflare(accountId, apiToken, suffix, {
   }
   let body;
   try { body = await response.json(); } catch { body = null; }
-  const errors = Array.isArray(body?.errors) ? body.errors : [];
-  const codes = errors.map((error) => error.code).filter(Number.isSafeInteger);
+  const errors = Array.isArray(body?.errors) ? [...body.errors] : [];
+  if (typeof body?.error === "string") errors.push({ code: body.code, message: body.error });
+  else if (typeof body?.error?.message === "string") errors.push({ code: body.error.code ?? body.code, message: body.error.message });
+  if (typeof body?.message === "string") errors.push({ code: body.code, message: body.message });
+  const fallbackCode = body?.error?.code ?? body?.code;
+  if (errors.length === 0 && (typeof fallbackCode === "string" || Number.isSafeInteger(fallbackCode))) {
+    errors.push({ code: fallbackCode });
+  }
+  const codes = errors.map((error) => error?.code).filter(Number.isSafeInteger);
   // Only Cloudflare's explicit missing-resource code permits creation. A generic
   // 404 can indicate the wrong account or route and must remain a failure.
   if (allowMissing && codes.includes(10007)) return null;
-  if (!response.ok || body?.success !== true) {
+  if (!response.ok || (enveloped && body?.success !== true)) {
+    const clean = (value, limit) => redactDiagnostics(value, [apiToken, ...redactSecrets])
+      .replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, limit);
     const details = errors.slice(0, 3).map((error) => {
-      const code = Number.isSafeInteger(error.code) ? error.code : "unknown";
-      const rawMessage = typeof error.message === "string" ? error.message : "No error message provided";
-      const message = redactDiagnostics(rawMessage, [apiToken, ...redactSecrets])
-        .replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 240);
+      const code = Number.isSafeInteger(error?.code) ? error.code
+        : typeof error?.code === "string" ? clean(error.code, 64) : "unknown";
+      const message = clean(typeof error?.message === "string" ? error.message : "No error message provided", 240);
       return `code ${code}: ${message}`;
     }).join("; ") || "No structured Cloudflare error was returned";
     throw new DeploymentFailure(`Cloudflare ${endpoint} failed with HTTP ${response.status}: ${details}.`, codes);
   }
-  return body.result;
+  return enveloped ? body.result : body;
 }
 
 export async function ensureAccountSubdomain(request) {
@@ -282,6 +292,8 @@ async function main() {
   const settingsPath = `/workers/scripts/${config.name}/settings`;
   const before = await accountRequest(settingsPath, { allowMissing: true });
   assertOwnedWorker(before);
+  await accountRequest("/containers/me", { enveloped: false });
+  console.log("Cloudflare Containers access check passed.");
   const subdomain = await ensureAccountSubdomain(accountRequest);
   const origin = verifiedOrigin(config.name, subdomain?.subdomain);
   console.log("Cloudflare account and Worker ownership checks passed.");
@@ -323,6 +335,32 @@ async function selfTest() {
     status, headers: { "Content-Type": "application/json" },
   });
   const fakeAccount = "a".repeat(32);
+  const bareAccount = { enabled: true, fakeAccountInformation: "not-for-logs" };
+  const access = await cloudflare(fakeAccount, "fake-provider-token", "/containers/me", {
+    enveloped: false,
+    fetchImplementation: async () => mockResponse(200, bareAccount),
+  });
+  assert.deepEqual(access, bareAccount);
+  for (const errorBody of [
+    { error: "Authentication error fake-provider-token fake-service-token", accountInformation: "not-for-logs" },
+    { code: "AUTHORIZATION_ERROR", message: "Authentication error fake-provider-token fake-service-token" },
+    { error: { code: 403, message: "Authentication error fake-provider-token fake-service-token" } },
+  ]) {
+    await assert.rejects(cloudflare(fakeAccount, "fake-provider-token", "/containers/me", {
+      enveloped: false, redactSecrets: ["fake-service-token"],
+      fetchImplementation: async () => mockResponse(403, errorBody),
+    }), (error) => error.message.includes("GET /accounts/<account-id>/containers/me") &&
+      error.message.includes("HTTP 403") && error.message.includes("Authentication error [REDACTED] [REDACTED]") &&
+      !error.message.includes("fake-provider-token") && !error.message.includes("fake-service-token") &&
+      !error.message.includes("not-for-logs"));
+  }
+  await assert.rejects(cloudflare(fakeAccount, "fake-provider-token", "/containers/me", {
+    enveloped: false, fetchImplementation: async () => mockResponse(403, { code: "FEATURE_DISABLED", unrelated: "not-for-logs" }),
+  }), (error) => error.message.includes("code FEATURE_DISABLED: No error message provided") &&
+    !error.message.includes("not-for-logs"));
+  await assert.rejects(cloudflare(fakeAccount, "fake-provider-token", "/workers/subdomain", {
+    enveloped: false, fetchImplementation: async () => { assert.fail("An unsupported bare-response route must not connect"); },
+  }), /only for the Containers access preflight/);
   const existingCalls = [];
   const existing = await ensureAccountSubdomain(async (path, options = {}) => {
     existingCalls.push({ path, method: options.method ?? "GET" });
@@ -368,7 +406,7 @@ async function selfTest() {
     },
   })), /omaarr90-statecraft.*unavailable.*10031/);
   assert.equal(conflictResponses.length, 0);
-  console.log("Deployment safeguards passed offline: secret redaction, ownership collision, verified origin, analytic Bell states, preserved subdomain, first-time registration, unexpected 404 rejection, and deterministic-label conflict.");
+  console.log("Deployment safeguards passed offline: secret redaction, ownership collision, verified origin, analytic Bell states, preserved subdomain, first-time registration, unexpected 404 rejection, deterministic-label conflict, and bare Containers access/403 diagnostics.");
 }
 
 if (process.argv.includes("--self-test")) {
