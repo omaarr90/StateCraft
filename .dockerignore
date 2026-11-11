@@ -1,0 +1,15 @@
+.git
+.gradle
+**/build
+**/bin
+.env*
+**/.env*
+.dev.vars*
+**/.dev.vars*
+node_modules
+**/node_modules
+.idea
+.vscode
+**/.DS_Store
+outputs
+graphify-out

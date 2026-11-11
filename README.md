@@ -45,6 +45,12 @@ test/runtime launchers:
 `statecraft-engines` depends on `statecraft-core`, so application projects only
 need the engines artifact when they want the default simulator backends.
 
+## HTTP API and website integration
+
+The `api` module exposes the existing Statecraft statevector engine through Quarkus REST. It reuses the `core` parsers, measurement API, noise channels, and `engines` implementation directly. With JDK 25 selected, run `./gradlew :api:quarkusDev` to start it on port 8080.
+
+See [API contracts and local execution](api/README.md) and [container hosting and website configuration](docs/api-hosting.md). The website forwards requests through its server to this service; it does not execute a separate quantum simulator in the browser.
+
 ## Java Runtime
 
 StateCraft engines currently target Java 25 and use the incubating Vector API.

@@ -6,4 +6,4 @@
  */
 
 rootProject.name = "statecraft"
-include("core", "engines", "app")
+include("core", "engines", "app", "api")

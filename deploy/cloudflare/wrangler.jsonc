@@ -1,0 +1,27 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "statecraft-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-11",
+  "workers_dev": true,
+  "containers": [
+    {
+      "class_name": "StatecraftApi",
+      "scheduling_policy": "durable_object",
+      "images": {
+        "api": {
+          "dockerfile": "../../api/Dockerfile",
+          "build_context": "../.."
+        }
+      }
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "STATECRAFT_API", "class_name": "StatecraftApi" }
+    ]
+  },
+  "exports": {
+    "StatecraftApi": { "type": "durable-object", "storage": "sqlite" }
+  }
+}
