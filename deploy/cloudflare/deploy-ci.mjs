@@ -18,8 +18,14 @@ const OWNER_VALUE = `${REPOSITORY}:quarkus-api:v1`;
 const VERSION_TAG = "statecraft-quarkus-api-v1";
 const REQUIRED_SECRETS = ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "STATECRAFT_API_TOKEN"];
 const API_ROOT = "https://api.cloudflare.com/client/v4";
+const FIRST_SUBDOMAIN = "omaarr90-statecraft";
 
-class DeploymentFailure extends Error {}
+class DeploymentFailure extends Error {
+  constructor(message, cloudflareCodes = []) {
+    super(message);
+    this.cloudflareCodes = cloudflareCodes;
+  }
+}
 
 function ensure(condition, message) {
   if (!condition) throw new DeploymentFailure(message);
@@ -42,7 +48,8 @@ export function assertOwnedWorker(settings) {
 
 export function verifiedOrigin(workerName, accountSubdomain) {
   const label = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
-  ensure(label.test(workerName) && label.test(accountSubdomain),
+  ensure(typeof workerName === "string" && typeof accountSubdomain === "string" &&
+    label.test(workerName) && label.test(accountSubdomain),
     "Cloudflare did not return a valid workers.dev account subdomain. No API origin was guessed.");
   return `https://${workerName}.${accountSubdomain}.workers.dev`;
 }
@@ -152,24 +159,57 @@ async function wrangler(args, phase, input) {
   }
 }
 
-async function cloudflare(accountId, apiToken, suffix, { allowMissing = false } = {}) {
+export async function cloudflare(accountId, apiToken, suffix, {
+  allowMissing = false, method = "GET", json, fetchImplementation = fetch, redactSecrets = [],
+} = {}) {
+  const endpoint = `${method} /accounts/<account-id>${suffix}`;
   let response;
   try {
-    response = await fetch(`${API_ROOT}/accounts/${accountId}${suffix}`, {
-      headers: { Authorization: `Bearer ${apiToken}` },
+    response = await fetchImplementation(`${API_ROOT}/accounts/${accountId}${suffix}`, {
+      method,
+      headers: { Authorization: `Bearer ${apiToken}`, ...(json === undefined ? {} : { "Content-Type": "application/json" }) },
+      ...(json === undefined ? {} : { body: JSON.stringify(json) }),
       redirect: "error",
       signal: AbortSignal.timeout(20_000),
     });
   } catch {
-    throw new DeploymentFailure("Cloudflare account verification could not connect. No deployment verification was attempted.");
+    throw new DeploymentFailure(`Cloudflare ${endpoint} could not connect.`);
   }
   let body;
   try { body = await response.json(); } catch { body = null; }
-  const missingScript = response.status === 404 || body?.errors?.some((error) => error.code === 10007);
-  if (allowMissing && missingScript) return null;
-  ensure(response.ok && body?.success === true,
-    `Cloudflare account verification failed with HTTP ${response.status}. Check the account ID and API token permissions; no provider response body was logged.`);
+  const errors = Array.isArray(body?.errors) ? body.errors : [];
+  const codes = errors.map((error) => error.code).filter(Number.isSafeInteger);
+  // Only Cloudflare's explicit missing-resource code permits creation. A generic
+  // 404 can indicate the wrong account or route and must remain a failure.
+  if (allowMissing && codes.includes(10007)) return null;
+  if (!response.ok || body?.success !== true) {
+    const details = errors.slice(0, 3).map((error) => {
+      const code = Number.isSafeInteger(error.code) ? error.code : "unknown";
+      const rawMessage = typeof error.message === "string" ? error.message : "No error message provided";
+      const message = redactDiagnostics(rawMessage, [apiToken, ...redactSecrets])
+        .replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 240);
+      return `code ${code}: ${message}`;
+    }).join("; ") || "No structured Cloudflare error was returned";
+    throw new DeploymentFailure(`Cloudflare ${endpoint} failed with HTTP ${response.status}: ${details}.`, codes);
+  }
   return body.result;
+}
+
+export async function ensureAccountSubdomain(request) {
+  const existing = await request("/workers/subdomain", { allowMissing: true });
+  if (existing !== null) return existing;
+  try {
+    await request("/workers/subdomain", { method: "PUT", json: { subdomain: FIRST_SUBDOMAIN } });
+  } catch (error) {
+    if (error instanceof DeploymentFailure && error.cloudflareCodes.includes(10031)) {
+      throw new DeploymentFailure(`The workers.dev label "${FIRST_SUBDOMAIN}" is unavailable (Cloudflare code 10031). Register an available workers.dev subdomain for this account in Cloudflare, then rerun the workflow. No alternative name was selected. ${error.message}`, [10031]);
+    }
+    throw error;
+  }
+  const verified = await request("/workers/subdomain");
+  ensure(verified?.subdomain === FIRST_SUBDOMAIN,
+    "Cloudflare did not confirm the newly registered workers.dev subdomain. No API origin was guessed.");
+  return verified;
 }
 
 async function requestJson(origin, path, options = {}, timeoutMs = 35_000) {
@@ -234,10 +274,15 @@ async function main() {
   const config = JSON.parse(await readFile(resolve(DIRECTORY, "wrangler.jsonc"), "utf8"));
   ensure(config.name === "statecraft-api" && config.workers_dev === true,
     "Review the deployment script before changing the Worker name or workers.dev setting.");
+  const accountRequest = (suffix, options = {}) => cloudflare(accountId, apiToken, suffix,
+    { ...options, redactSecrets: [serviceToken] });
+  const account = await accountRequest("");
+  ensure(account?.id === accountId,
+    "Cloudflare account details did not confirm CLOUDFLARE_ACCOUNT_ID. Check the account ID and Account Settings Read permission before deploying.");
   const settingsPath = `/workers/scripts/${config.name}/settings`;
-  const before = await cloudflare(accountId, apiToken, settingsPath, { allowMissing: true });
+  const before = await accountRequest(settingsPath, { allowMissing: true });
   assertOwnedWorker(before);
-  const subdomain = await cloudflare(accountId, apiToken, "/workers/subdomain");
+  const subdomain = await ensureAccountSubdomain(accountRequest);
   const origin = verifiedOrigin(config.name, subdomain?.subdomain);
   console.log("Cloudflare account and Worker ownership checks passed.");
   await wrangler(["deploy", "--keep-vars", "--strict", "--tag", VERSION_TAG,
@@ -245,9 +290,9 @@ async function main() {
   // Do not request public health or otherwise cold-start a fresh container before this succeeds.
   // This installs the existing GitHub service secret unchanged; the workflow never generates or rotates it.
   await wrangler(["secret", "put", "STATECRAFT_API_TOKEN"], "Installing the existing simulator service secret", `${serviceToken}\n`);
-  const after = await cloudflare(accountId, apiToken, settingsPath);
+  const after = await accountRequest(settingsPath);
   assertOwnedWorker(after);
-  const workerSubdomain = await cloudflare(accountId, apiToken, `/workers/scripts/${config.name}/subdomain`);
+  const workerSubdomain = await accountRequest(`/workers/scripts/${config.name}/subdomain`);
   ensure(workerSubdomain?.enabled === true, "Cloudflare reports that this Worker's workers.dev endpoint is disabled. No API origin was guessed.");
   await verify(origin, serviceToken);
   await summary(`Verified API origin: ${origin}\n\nChecks passed: public health UP; unauthenticated capabilities 401; authenticated Java statevector capabilities; Bell probabilities 0.5 at |00> and |11>; initial, Hadamard, and entangled amplitude steps.\n\nSet this origin as the Site's server-only STATECRAFT_API_URL. Keep its server-only STATECRAFT_API_TOKEN equal to the existing repository secret.`);
@@ -266,13 +311,64 @@ async function selfTest() {
   assert.throws(() => assertOwnedWorker({ bindings: [owned.bindings[0]] }), /name collision/);
   assert.equal(verifiedOrigin("statecraft-api", "verified-account"), "https://statecraft-api.verified-account.workers.dev");
   assert.throws(() => verifiedOrigin("statecraft-api", "example.com/path"), /No API origin was guessed/);
+  assert.throws(() => verifiedOrigin("statecraft-api", undefined), /No API origin was guessed/);
+  assert.throws(() => verifiedOrigin("statecraft-api", null), /No API origin was guessed/);
   const h = Math.SQRT1_2;
   const steps = [[1, 0, 0, 0], [h, h, 0, 0], [h, 0, 0, h]].map((state) => state.map((re) => ({ re, im: 0 })));
   const bell = { runtime: "java", engine: "statevector", qubits: 2, probabilities: [.5, 0, 0, .5], steps, amplitudes: steps[2] };
   assertBellResult(bell);
   assert.throws(() => assertBellResult({ ...bell, probabilities: [1, 0, 0, 0] }), /probabilities/);
   assert.throws(() => assertBellResult({ ...bell, steps: steps.slice(1) }), /intermediate/);
-  console.log("Deployment safeguards passed offline: missing-secret skip, ownership collision, verified origin, and analytic Bell states.");
+  const mockResponse = (status, body) => new Response(JSON.stringify(body), {
+    status, headers: { "Content-Type": "application/json" },
+  });
+  const fakeAccount = "a".repeat(32);
+  const existingCalls = [];
+  const existing = await ensureAccountSubdomain(async (path, options = {}) => {
+    existingCalls.push({ path, method: options.method ?? "GET" });
+    return { subdomain: "preserved-account" };
+  });
+  assert.equal(existing.subdomain, "preserved-account");
+  assert.deepEqual(existingCalls, [{ path: "/workers/subdomain", method: "GET" }]);
+
+  const creationCalls = [];
+  const creationResponses = [
+    [404, { success: false, errors: [{ code: 10007, message: "Subdomain not registered" }] }],
+    [200, { success: true, result: { subdomain: FIRST_SUBDOMAIN } }],
+    [200, { success: true, result: { subdomain: FIRST_SUBDOMAIN } }],
+  ];
+  const created = await ensureAccountSubdomain((path, options = {}) => cloudflare(fakeAccount, "fake-provider-token", path, {
+    ...options,
+    fetchImplementation: async (_url, init) => {
+      creationCalls.push({ method: init.method, json: init.body ? JSON.parse(init.body) : null });
+      const [status, body] = creationResponses.shift();
+      return mockResponse(status, body);
+    },
+  }));
+  assert.equal(created.subdomain, FIRST_SUBDOMAIN);
+  assert.deepEqual(creationCalls, [{ method: "GET", json: null },
+    { method: "PUT", json: { subdomain: FIRST_SUBDOMAIN } }, { method: "GET", json: null }]);
+
+  await assert.rejects(cloudflare(fakeAccount, "fake-provider-token", "/workers/subdomain", {
+    allowMissing: true, redactSecrets: ["fake-service-token"],
+    fetchImplementation: async () => mockResponse(404, { success: false,
+      errors: [{ code: 7003, message: "Wrong route fake-provider-token fake-service-token" }] }),
+  }), (error) => error.message.includes("GET /accounts/<account-id>/workers/subdomain") &&
+    error.message.includes("HTTP 404") && error.message.includes("code 7003: Wrong route [REDACTED] [REDACTED]") &&
+    !error.message.includes("fake-provider-token") && !error.message.includes("fake-service-token"));
+
+  const conflictResponses = [
+    [404, { success: false, errors: [{ code: 10007, message: "Subdomain not registered" }] }],
+    [409, { success: false, errors: [{ code: 10031, message: "Subdomain is unavailable" }] }],
+  ];
+  await assert.rejects(ensureAccountSubdomain((path, options = {}) => cloudflare(fakeAccount, "fake-provider-token", path, {
+    ...options, fetchImplementation: async () => {
+      const [status, body] = conflictResponses.shift();
+      return mockResponse(status, body);
+    },
+  })), /omaarr90-statecraft.*unavailable.*10031/);
+  assert.equal(conflictResponses.length, 0);
+  console.log("Deployment safeguards passed offline: secret redaction, ownership collision, verified origin, analytic Bell states, preserved subdomain, first-time registration, unexpected 404 rejection, and deterministic-label conflict.");
 }
 
 if (process.argv.includes("--self-test")) {

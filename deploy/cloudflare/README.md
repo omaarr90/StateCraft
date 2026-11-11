@@ -18,6 +18,8 @@ Create the Cloudflare token in [API Tokens](https://dash.cloudflare.com/profile/
 
 The workflow checks the Worker configuration, builds and uploads the Linux container, deploys the Worker, installs its service secret through stdin, and verifies the live Java API. It reports the actual `workers.dev` origin in the job summary. When required secrets are missing, the job explains what is missing and skips deployment; rerun it after configuring the secrets.
 
+Before deploying, the workflow checks the configured account through Cloudflare's account-details API and verifies ownership of any existing Worker. It preserves an existing `workers.dev` account subdomain. If Cloudflare explicitly reports that no subdomain is registered (code `10007`), it registers `omaarr90-statecraft` and reads it back before constructing the API origin. If that label is unavailable (code `10031`), deployment stops with a concrete error; register an available account subdomain in Cloudflare, then rerun. Other HTTP 404 responses remain failures. Provider failures identify the endpoint, HTTP status, and bounded, sanitized error codes and messages; token values and raw response bodies are not logged.
+
 Cloudflare Containers requires an eligible Workers account. An authorization or plan error during deployment is reported by the workflow; configuring a token does not change billing or upgrade the account.
 
 ## Connect the website
