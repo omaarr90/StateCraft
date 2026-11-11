@@ -20,7 +20,7 @@ spotless {
     }
     format("misc") {
         target("**/*.md", ".gitignore")
-        targetExclude("**/build/**", "**/bin/**")
+        targetExclude("**/build/**", "**/bin/**", "**/node_modules/**", "**/.wrangler/**")
         trimTrailingWhitespace()
         endWithNewline()
     }
